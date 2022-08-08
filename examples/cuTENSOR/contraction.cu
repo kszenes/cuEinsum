@@ -82,6 +82,7 @@ struct GPUTimer
 
 int main()
 {
+    // --- Single precision ---
     typedef float floatTypeA;
     typedef float floatTypeB;
     typedef float floatTypeC;
@@ -92,8 +93,20 @@ int main()
     cudaDataType_t typeC = CUDA_R_32F;
     cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
 
+    // --- Double precision ---
+    /* typedef double floatTypeA; */
+    /* typedef double floatTypeB; */
+    /* typedef double floatTypeC; */
+    /* typedef double floatTypeCompute; */
+
+    /* cudaDataType_t typeA = CUDA_R_64F; */
+    /* cudaDataType_t typeB = CUDA_R_64F; */
+    /* cudaDataType_t typeC = CUDA_R_64F; */
+    /* cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F; */
+    // --- END ---
+
     floatTypeCompute alpha = (floatTypeCompute)1.1f;
-    floatTypeCompute beta  = (floatTypeCompute)0.f;
+    floatTypeCompute beta  = (floatTypeCompute)2.5f;
 
     printf("Include headers and define data types\n");
 
@@ -101,24 +114,48 @@ int main()
      * Computing: C_{m,u,n,v} = alpha * A_{m,h,k,n} B_{u,k,v,h} + beta * C_{m,u,n,v}
      **********************/
 
-    std::vector<int> modeC{'m','u','n','v'};
-    std::vector<int> modeA{'m','h','k','n'};
-    std::vector<int> modeB{'u','k','v','h'};
+    /* std::vector<int> modeC{'m','u','n','v'}; */
+    /* std::vector<int> modeA{'m','h','k','n'}; */
+    /* std::vector<int> modeB{'u','k','v','h'}; */
+    /* int nmodeA = modeA.size(); */
+    /* int nmodeB = modeB.size(); */
+    /* int nmodeC = modeC.size(); */
+
+    /* std::unordered_map<int, int64_t> extent; */
+    /* extent['m'] = 96; */
+    /* extent['n'] = 96; */
+    /* extent['u'] = 96; */
+    /* extent['v'] = 64; */
+    /* extent['h'] = 64; */
+    /* extent['k'] = 64; */
+
+    /* extent['m'] = 255; */
+    /* extent['n'] = 127; */
+    /* extent['u'] = 129; */
+    /* extent['v'] = 65; */
+    /* extent['h'] = 62; */
+    /* extent['k'] = 63; */
+
+    /* double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['k'] * extent['h']) /1e12; */
+
+    /**************
+      MATMUL
+    **************/
+    std::vector<int> modeC{'i','k'};
+    std::vector<int> modeA{'i','j'};
+    std::vector<int> modeB{'j','k'};
     int nmodeA = modeA.size();
     int nmodeB = modeB.size();
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    extent['m'] = 96;
-    extent['n'] = 96;
-    extent['u'] = 96;
-    extent['v'] = 64;
-    extent['h'] = 64;
-    extent['k'] = 64;
+    extent['i'] = 1 << 13;
+    extent['j'] = 1 << 14;
+    extent['k'] = 1 << 14;
 
 
     // computes FLOPS
-    double gflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['k'] * extent['h']) /1e9;
+    double tflops = (2.0 * extent['i'] * extent['j'] * extent['k']) /1e12;
 
     std::vector<int64_t> extentC;
     for (auto mode : modeC)
@@ -156,11 +193,11 @@ int main()
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &C_d, sizeC));
 
     floatTypeA *A = (floatTypeA*) malloc(sizeof(floatTypeA) * elementsA);
-    printf("A successful\n");
+    printf("A malloc successful\n");
     floatTypeB *B = (floatTypeB*) malloc(sizeof(floatTypeB) * elementsB);
-    printf("B successful\n");
+    printf("B malloc successful\n");
     floatTypeC *C = (floatTypeC*) malloc(sizeof(floatTypeC) * elementsC);
-    printf("C successful\n");
+    printf("C malloc successful\n");
 
     if (A == NULL || B == NULL || C == NULL)
     {
@@ -174,11 +211,11 @@ int main()
      *******************/
 
     for (int64_t i = 0; i < elementsA; i++)
-        A[i] = (((float) rand())/RAND_MAX - 0.5)*100;
+        A[i] = (((floatTypeA) rand())/RAND_MAX - 0.5)*100;
     for (int64_t i = 0; i < elementsB; i++)
-        B[i] = (((float) rand())/RAND_MAX - 0.5)*100;
+        B[i] = (((floatTypeB) rand())/RAND_MAX - 0.5)*100;
     for (int64_t i = 0; i < elementsC; i++)
-        C[i] = (((float) rand())/RAND_MAX - 0.5)*100;
+        C[i] = (((floatTypeC) rand())/RAND_MAX - 0.5)*100;
 
     HANDLE_CUDA_ERROR(cudaMemcpy(A_d, A, sizeA, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(B_d, B, sizeB, cudaMemcpyHostToDevice));
@@ -340,10 +377,12 @@ int main()
     double transferedBytes = sizeC + sizeA + sizeB;
     transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
     transferedBytes /= 1e9;
-    printf("\nRESULTS:\n");
-    printf("Compute [GFLOPS/s]: Best: %.2f;  Mean %.2f\n",
-            gflops / minTimeCUTENSOR, gflops/ avTime);
-    printf("Memory [GB/s]: Best: %.2f GB/s Mean: %.2f\n",
+    printf("\nRESULTS from %d runs:\n", runs);
+    printf("Time [s]: Best: %.2f; Mean %.2f\n",
+            minTimeCUTENSOR, avTime);
+    printf("Compute [GFLOPS/s]: Best: %.4f;  Mean %.4f\n",
+            tflops / minTimeCUTENSOR, tflops/ avTime);
+    printf("Memory [GB/s]: Best: %.2f;  Mean: %.2f\n",
             transferedBytes / minTimeCUTENSOR, transferedBytes / avTime);
 
     if (A) free(A);
