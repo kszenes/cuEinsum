@@ -95,6 +95,8 @@ int main()
     floatTypeCompute alpha = (floatTypeCompute)1.1f;
     floatTypeCompute beta  = (floatTypeCompute)0.f;
 
+    printf("Include headers and define data types\n");
+
     /**********************
      * Computing: C_{m,u,n,v} = alpha * A_{m,h,k,n} B_{u,k,v,h} + beta * C_{m,u,n,v}
      **********************/
@@ -114,6 +116,8 @@ int main()
     extent['h'] = 64;
     extent['k'] = 64;
 
+
+    // computes FLOPS
     double gflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['k'] * extent['h']) /1e9;
 
     std::vector<int64_t> extentC;
@@ -126,6 +130,7 @@ int main()
     for (auto mode : modeB)
         extentB.push_back(extent[mode]);
 
+    printf("Define modes and extents\n");
     /**********************
      * Allocating data
      **********************/
@@ -151,8 +156,11 @@ int main()
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &C_d, sizeC));
 
     floatTypeA *A = (floatTypeA*) malloc(sizeof(floatTypeA) * elementsA);
+    printf("A successful\n");
     floatTypeB *B = (floatTypeB*) malloc(sizeof(floatTypeB) * elementsB);
+    printf("B successful\n");
     floatTypeC *C = (floatTypeC*) malloc(sizeof(floatTypeC) * elementsC);
+    printf("C successful\n");
 
     if (A == NULL || B == NULL || C == NULL)
     {
@@ -160,6 +168,7 @@ int main()
         return -1;
     }
 
+    printf("Allocate, initialize and transfer tensors\n");
     /*******************
      * Initialize data
      *******************/
@@ -210,6 +219,7 @@ int main()
                  NULL,/*stride*/
                  typeC, CUTENSOR_OP_IDENTITY));
 
+    printf("Initialize cuTENSOR and tensor descriptors\n");
     /**********************************************
      * Retrieve the memory alignment for each tensor
      **********************************************/ 
@@ -232,6 +242,7 @@ int main()
                   &descC, 
                   &alignmentRequirementC));
 
+    printf("Query best alignment requirement for our pointers\n");
     /*******************************
      * Create Contraction Descriptor
      *******************************/
@@ -245,6 +256,7 @@ int main()
                  &descC, modeC.data(), alignmentRequirementC,
                  typeCompute));
 
+    printf("Initialize contraction descriptor\n");
     /**************************
     * Set the algorithm to use
     ***************************/
@@ -254,6 +266,7 @@ int main()
                  &handle, &find, 
                  CUTENSOR_ALGO_DEFAULT));
 
+    printf("Initialize settings to find algorithm\n");
     /**********************
      * Query workspace
      **********************/
@@ -274,6 +287,7 @@ int main()
         }
     } 
 
+    printf("Query recommended workspace size and allocate it\n");
     /**************************
      * Create Contraction Plan
      **************************/
@@ -285,13 +299,16 @@ int main()
                  &find,
                  worksize));
 
+    printf("Create plan for contraction\n");
     /**********************
      * Run
      **********************/
 
     double minTimeCUTENSOR = 1e100;
+    double avTime = 0;
+    const int runs = 1;
     cutensorStatus_t err;
-    for (int i=0; i < 3; ++i)
+    for (int i=0; i < runs; ++i)
     {
         cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice);
         cudaDeviceSynchronize();
@@ -313,15 +330,21 @@ int main()
         {
             printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
         }
+        avTime += time / runs;
         minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
     }
 
+    printf("Execute contraction from plan\n");
     /*************************/
 
     double transferedBytes = sizeC + sizeA + sizeB;
     transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
     transferedBytes /= 1e9;
-    printf("cuTensor: %.2f GFLOPs/s %.2f GB/s\n", gflops / minTimeCUTENSOR, transferedBytes/ minTimeCUTENSOR);
+    printf("\nRESULTS:\n");
+    printf("Compute [GFLOPS/s]: Best: %.2f;  Mean %.2f\n",
+            gflops / minTimeCUTENSOR, gflops/ avTime);
+    printf("Memory [GB/s]: Best: %.2f GB/s Mean: %.2f\n",
+            transferedBytes / minTimeCUTENSOR, transferedBytes / avTime);
 
     if (A) free(A);
     if (B) free(B);

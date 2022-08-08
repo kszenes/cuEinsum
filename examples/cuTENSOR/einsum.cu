@@ -38,6 +38,8 @@
 #include <cuda_fp16.h>
 #include "cutensor.h"
 
+#include <string>
+
 #define HANDLE_ERROR(x) { const auto err = x;\
     if (err == CUTENSOR_STATUS_NOT_SUPPORTED) { return false; }\
     if (err != CUTENSOR_STATUS_SUCCESS) {printf("Error: %s in line %d\n", cutensorGetErrorString(err), __LINE__); return false; } }

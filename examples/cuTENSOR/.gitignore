@@ -1,0 +1,8 @@
+contraction
+contraction_autotuning
+contraction_simple
+einsum
+elementwise_binary
+elementwise_permute
+elementwise_trinary
+reduction
