@@ -1,14 +1,18 @@
 CXX_FLAGS=-std=c++11 -O3 -I${CUTENSOR_ROOT}/include -I../../include \
 						 -L${CUTENSOR_ROOT}/lib/11 -lcutensor -lcudart -lcublas \
+						 --compiler-options "-Wall -Wextra" \
 						 -use_fast_math -lineinfo
 
-all: einsum contraction contraction_simple contraction_autotuning elementwise_binary elementwise_permute elementwise_trinary reduction
+all: einsum contraction contraction_simple contraction_autotuning elementwise_binary elementwise_permute elementwise_trinary reduction gemm_cublas
 
 einsum: einsum.cu
 	nvcc einsum.cu -o  einsum ${CXX_FLAGS}
 
 contraction: contraction.cu
 	nvcc contraction.cu -o  contraction ${CXX_FLAGS}
+
+gemm_cublas: gemm_cublas.cu
+	nvcc gemm_cublas.cu -o  gemm_cublas ${CXX_FLAGS}
 
 contraction_simple: contraction_simple.cu
 	nvcc contraction_simple.cu -o  contraction_simple ${CXX_FLAGS}
