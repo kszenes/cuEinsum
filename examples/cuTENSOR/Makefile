@@ -1,4 +1,6 @@
-CXX_FLAGS=-std=c++11 -I${CUTENSOR_ROOT}/include -L${CUTENSOR_ROOT}/lib/11 -lcutensor -lcudart
+CXX_FLAGS=-std=c++11 -O3 -I${CUTENSOR_ROOT}/include -I../../include \
+						 -L${CUTENSOR_ROOT}/lib/11 -lcutensor -lcudart -lcublas \
+						 -use_fast_math -lineinfo
 
 all: einsum contraction contraction_simple contraction_autotuning elementwise_binary elementwise_permute elementwise_trinary reduction
 

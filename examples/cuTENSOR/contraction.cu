@@ -36,6 +36,11 @@
 #include <cuda_runtime.h>
 #include <cutensor.h>
 
+#include <cublas_v2.h>
+#include "utils.h"
+
+double rmse(const int, const double*, const double*);
+
 #define HANDLE_ERROR(x)                                               \
 { const auto err = x;                                                 \
   if( err != CUTENSOR_STATUS_SUCCESS )                                \
@@ -83,30 +88,30 @@ struct GPUTimer
 int main()
 {
     // --- Single precision ---
-    typedef float floatTypeA;
-    typedef float floatTypeB;
-    typedef float floatTypeC;
-    typedef float floatTypeCompute;
+    // typedef float floatTypeA;
+    // typedef float floatTypeB;
+    // typedef float floatTypeC;
+    // typedef float floatTypeCompute;
 
-    cudaDataType_t typeA = CUDA_R_32F;
-    cudaDataType_t typeB = CUDA_R_32F;
-    cudaDataType_t typeC = CUDA_R_32F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
+    // cudaDataType_t typeA = CUDA_R_32F;
+    // cudaDataType_t typeB = CUDA_R_32F;
+    // cudaDataType_t typeC = CUDA_R_32F;
+    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
 
     // --- Double precision ---
-    /* typedef double floatTypeA; */
-    /* typedef double floatTypeB; */
-    /* typedef double floatTypeC; */
-    /* typedef double floatTypeCompute; */
+    typedef double floatTypeA;
+    typedef double floatTypeB;
+    typedef double floatTypeC;
+    typedef double floatTypeCompute;
 
-    /* cudaDataType_t typeA = CUDA_R_64F; */
-    /* cudaDataType_t typeB = CUDA_R_64F; */
-    /* cudaDataType_t typeC = CUDA_R_64F; */
-    /* cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F; */
+    cudaDataType_t typeA = CUDA_R_64F;
+    cudaDataType_t typeB = CUDA_R_64F;
+    cudaDataType_t typeC = CUDA_R_64F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
     // --- END ---
 
-    floatTypeCompute alpha = (floatTypeCompute)1.1f;
-    floatTypeCompute beta  = (floatTypeCompute)2.5f;
+    floatTypeCompute alpha = (floatTypeCompute)0.f;
+    floatTypeCompute beta  = (floatTypeCompute)2.3f;
 
     printf("Include headers and define data types\n");
 
@@ -149,9 +154,13 @@ int main()
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    extent['i'] = 1 << 13;
-    extent['j'] = 1 << 14;
-    extent['k'] = 1 << 14;
+    const int i = 1 << 13;
+    const int j = 1 << 11;
+    const int k = 1 << 12;
+
+    extent['i'] = i;
+    extent['j'] = j;
+    extent['k'] = k;
 
 
     // computes FLOPS
@@ -187,10 +196,11 @@ int main()
     size_t sizeC = sizeof(floatTypeC) * elementsC;
     printf("Total memory: %.2f GiB\n", (sizeA + sizeB + sizeC)/1024./1024./1024);
 
-    void *A_d, *B_d, *C_d;
+    floatTypeA *A_d, *B_d, *C_d;
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &A_d, sizeA));
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &B_d, sizeB));
     HANDLE_CUDA_ERROR(cudaMalloc((void**) &C_d, sizeC));
+
 
     floatTypeA *A = (floatTypeA*) malloc(sizeof(floatTypeA) * elementsA);
     printf("A malloc successful\n");
@@ -221,13 +231,31 @@ int main()
     HANDLE_CUDA_ERROR(cudaMemcpy(B_d, B, sizeB, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
 
+
+    /*************
+     * Compute DGEMM CUBLAS
+     ************/
+    floatTypeC *C_cublas;
+    HANDLE_CUDA_ERROR(cudaMalloc((void**) &C_cublas, sizeC));
+    HANDLE_CUDA_ERROR(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
+
+    cudaStream_t s;
+    cublasHandle_t cublas_handle;
+    HANDLE_CUDA_ERROR(cudaStreamCreate(&s));
+    CUDA_CHECK(cublasCreate(&cublas_handle));
+
+    GPUTimer timer_cublas;
+    timer_cublas.start();
+    CUDA_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, i, j, k, &alpha, A_d, i, B_d, k, &beta, C_cublas, i));
+    auto time_cublas = timer_cublas.seconds();
+
+
     /*************************
      * cuTENSOR
      *************************/ 
 
     cutensorHandle_t handle;
     HANDLE_ERROR(cutensorInit(&handle));
-
     /**********************
      * Create Tensor Descriptors
      **********************/
@@ -371,6 +399,9 @@ int main()
         minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
     }
 
+    double rmse_diff = rmse(j*k, C_d, C_cublas);
+    printf("RMSE = %f\n", rmse_diff);
+
     printf("Execute contraction from plan\n");
     /*************************/
 
@@ -378,8 +409,10 @@ int main()
     transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
     transferedBytes /= 1e9;
     printf("\nRESULTS from %d runs:\n", runs);
-    printf("Time [s]: Best: %.2f; Mean %.2f\n",
+    printf("Time cuTensor[s]: Best: %.4f; Mean %.4f\n",
             minTimeCUTENSOR, avTime);
+    printf("Time cuBLAS[s]: Best: %.4f; Mean %.4f\n",
+            time_cublas, time_cublas);
     printf("Compute [GFLOPS/s]: Best: %.4f;  Mean %.4f\n",
             tflops / minTimeCUTENSOR, tflops/ avTime);
     printf("Memory [GB/s]: Best: %.2f;  Mean: %.2f\n",
@@ -393,5 +426,31 @@ int main()
     if (C_d) cudaFree(C_d);
     if (work) cudaFree(work);
 
+    if (C_cublas) CUDA_CHECK(cudaFree(C_cublas));
+    if (cublas_handle) CUDA_CHECK(cublasDestroy(cublas_handle));
+
     return 0;
+}
+
+double rmse(const int n, const double* dVec1, const double* dVec2)
+{
+  double* hVec1;
+  double* hVec2;
+  HANDLE_CUDA_ERROR(cudaMallocHost(&hVec1, n*sizeof(double)));
+  HANDLE_CUDA_ERROR(cudaMallocHost(&hVec2, n*sizeof(double)));
+  
+  HANDLE_CUDA_ERROR(cudaMemcpy(hVec1, dVec1, n*sizeof(double), cudaMemcpyDeviceToHost));
+  HANDLE_CUDA_ERROR(cudaMemcpy(hVec2, dVec2, n*sizeof(double), cudaMemcpyDeviceToHost));
+
+  double rmse = 0.;
+  for (int i(0); i < n; ++i)
+  {
+    double diff = hVec1[i] - hVec2[i];
+    rmse += (diff*diff);
+  }
+
+  HANDLE_CUDA_ERROR(cudaFreeHost(hVec1));
+  HANDLE_CUDA_ERROR(cudaFreeHost(hVec2));
+
+  return std::sqrt(rmse/n);
 }
