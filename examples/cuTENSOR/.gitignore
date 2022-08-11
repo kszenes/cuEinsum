@@ -7,3 +7,7 @@ elementwise_permute
 elementwise_trinary
 reduction
 gemm_cublas
+cublas_benchmark
+
+report*
+

@@ -36,7 +36,8 @@
 #include <cublas_v2.h>
 #include "utils.h"
 
-double rmse(const int, const double*, const double*);
+template <typename T>
+T rmse(const int n, const T* dVec1, const T* dVec2);
 
 #define HANDLE_CUDA_ERROR(x)                                      \
 { const auto err = x;                                             \
@@ -78,27 +79,38 @@ struct GPUTimer
 
 int main()
 {
+    const int runs = 3;
     // --- Single precision ---
-    // typedef float floatTypeA;
-    // typedef float floatTypeB;
-    // typedef float floatTypeC;
-    // typedef float floatTypeCompute;
+    typedef float floatTypeA;
+    typedef float floatTypeB;
+    typedef float floatTypeC;
+    typedef float floatTypeCompute;
+    cudaDataType_t typeA = CUDA_R_32F;
+    cudaDataType_t typeB = CUDA_R_32F;
+    cudaDataType_t typeC = CUDA_R_32F;
+    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
 
     // --- Double precision ---
-    typedef double floatTypeA;
-    typedef double floatTypeB;
-    typedef double floatTypeC;
-    typedef double floatTypeCompute;
+    // typedef double floatTypeA;
+    // typedef double floatTypeB;
+    // typedef double floatTypeC;
+    // typedef double floatTypeCompute;
+    // cudaDataType_t typeA = CUDA_R_64F;
+    // cudaDataType_t typeB = CUDA_R_64F;
+    // cudaDataType_t typeC = CUDA_R_64F;
+    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
     // --- END ---
 
-    floatTypeCompute alpha = (floatTypeCompute)0.f;
-    floatTypeCompute beta  = (floatTypeCompute)2.3f;
+    floatTypeCompute alpha = (floatTypeCompute)1.4f;
+    floatTypeCompute beta  = (floatTypeCompute)0.0f;
 
     printf("Include headers and define data types\n");
 
-    const int i = 1 << 14;
+    const int i = 1 << 15;
     const int j = 1 << 14;
-    const int k = 1 << 13;
+    const int k = 1 << 14;
 
     // computes FLOPS
     double tflops = (2.0 * i * j * k) /1e12;
@@ -140,17 +152,20 @@ int main()
      * Initialize data
      *******************/
 
-    for (int64_t i = 0; i < elementsA; i++)
+    for (size_t i = 0; i < elementsA; i++)
         A[i] = (((floatTypeA) rand())/RAND_MAX - 0.5)*100;
-    for (int64_t i = 0; i < elementsB; i++)
+    for (size_t i = 0; i < elementsB; i++)
         B[i] = (((floatTypeB) rand())/RAND_MAX - 0.5)*100;
-    for (int64_t i = 0; i < elementsC; i++)
+    for (size_t i = 0; i < elementsC; i++)
         C[i] = (((floatTypeC) rand())/RAND_MAX - 0.5)*100;
 
     HANDLE_CUDA_ERROR(cudaMemcpy(A_d, A, sizeA, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(B_d, B, sizeB, cudaMemcpyHostToDevice));
     HANDLE_CUDA_ERROR(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
 
+    floatTypeA *C_gemm;
+    HANDLE_CUDA_ERROR(cudaMalloc((void**) &C_gemm, sizeC));
+    HANDLE_CUDA_ERROR(cudaMemcpy(C_gemm, C, sizeC, cudaMemcpyHostToDevice));
 
     /*************
      * Compute DGEMM CUBLAS
@@ -160,23 +175,62 @@ int main()
     HANDLE_CUDA_ERROR(cudaStreamCreate(&s));
     CUDA_CHECK(cublasCreate(&cublas_handle));
 
-    GPUTimer timer_cublas;
-    timer_cublas.start();
-    CUDA_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, i, j, k, &alpha, A_d, i, B_d, k, &beta, C_d, i));
-    auto time_cublas = timer_cublas.seconds();
+    double av_time_cublas = 0.0;
+    double min_time_cublas = 1e8;
+    CUDA_CHECK(cublasSgemm(
+                cublas_handle,
+                CUBLAS_OP_N, CUBLAS_OP_N,
+                i, j, k,
+                &alpha,
+                A_d, i,
+                B_d, k,
+                &beta,
+                C_gemm, i));
+    for (int iter = 0; iter < runs; iter++) {
+        GPUTimer timer;
+        CUDA_CHECK(cublasGemmEx(
+                    cublas_handle, 
+                    CUBLAS_OP_N, CUBLAS_OP_N, 
+                    i, j, k, 
+                    &alpha, 
+                    A_d, typeA, i, 
+                    B_d, typeB, k, 
+                    &beta, 
+                    C_d, typeC, i,
+                    cublasComputeType,
+                    CUBLAS_GEMM_DEFAULT)); // warmup
+        timer.start();
+        CUDA_CHECK(cublasGemmEx(
+                    cublas_handle, 
+                    CUBLAS_OP_N, CUBLAS_OP_N, 
+                    i, j, k, 
+                    &alpha, 
+                    A_d, typeA, i, 
+                    B_d, typeB, k, 
+                    &beta, 
+                    C_d, typeC, i,
+                    cublasComputeType,
+                    CUBLAS_GEMM_DEFAULT)); // warmup
+        auto time  = timer.seconds();
+        min_time_cublas = (time  < min_time_cublas) ? time : min_time_cublas;
+        av_time_cublas += time / runs;
+    }
 
 
     double transferedBytes = sizeC + sizeA + sizeB;
     transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
     transferedBytes /= 1e9;
-    const int runs = 1;
+    
+    auto myRMSE = rmse(elementsC, C_gemm, C_d);
+
     printf("\nRESULTS from %d runs:\n", runs);
-    printf("Time cuTensor[s]: Best: %.4f; Mean %.4f\n",
-            time_cublas, time_cublas);
+    printf("RMSE: %f\n", myRMSE);
     printf("Time cuBLAS[s]: Best: %.4f; Mean %.4f\n",
-            time_cublas, time_cublas);
+            min_time_cublas, av_time_cublas);
+    printf("Compute [GFLOPS/s]: Best: %.4f;  Mean %.4f\n",
+            tflops / min_time_cublas, tflops/ av_time_cublas);
     printf("Memory [GB/s]: Best: %.2f;  Mean: %.2f\n",
-            transferedBytes / time_cublas, transferedBytes / time_cublas);
+            transferedBytes / min_time_cublas, transferedBytes / av_time_cublas);
 
     if (A) free(A);
     if (B) free(B);
@@ -184,7 +238,31 @@ int main()
     if (A_d) cudaFree(A_d);
     if (B_d) cudaFree(B_d);
     if (C_d) cudaFree(C_d);
+    if (C_gemm) cudaFree(C_gemm);
 
     if (cublas_handle) CUDA_CHECK(cublasDestroy(cublas_handle));
     return 0;
+}
+template <typename T>
+T rmse(const int n, const T* dVec1, const T* dVec2)
+{
+  T* hVec1;
+  T* hVec2;
+  HANDLE_CUDA_ERROR(cudaMallocHost(&hVec1, n*sizeof(T)));
+  HANDLE_CUDA_ERROR(cudaMallocHost(&hVec2, n*sizeof(T)));
+  
+  HANDLE_CUDA_ERROR(cudaMemcpy(hVec1, dVec1, n*sizeof(T), cudaMemcpyDeviceToHost));
+  HANDLE_CUDA_ERROR(cudaMemcpy(hVec2, dVec2, n*sizeof(T), cudaMemcpyDeviceToHost));
+
+  T rmse = 0.;
+  for (int i(0); i < n; ++i)
+  {
+    T diff = hVec1[i] - hVec2[i];
+    rmse += (diff*diff);
+  }
+
+  HANDLE_CUDA_ERROR(cudaFreeHost(hVec1));
+  HANDLE_CUDA_ERROR(cudaFreeHost(hVec2));
+
+  return std::sqrt(rmse/n);
 }

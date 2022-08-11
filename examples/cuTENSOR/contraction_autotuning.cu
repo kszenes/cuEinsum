@@ -82,15 +82,28 @@ struct GPUTimer
 
 int main()
 {
-    typedef float floatTypeA;
-    typedef float floatTypeB;
-    typedef float floatTypeC;
-    typedef float floatTypeCompute;
+    // Single precision
+    // typedef float floatTypeA;
+    // typedef float floatTypeB;
+    // typedef float floatTypeC;
+    // typedef float floatTypeCompute;
 
-    cudaDataType_t typeA = CUDA_R_32F;
-    cudaDataType_t typeB = CUDA_R_32F;
-    cudaDataType_t typeC = CUDA_R_32F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
+    // cudaDataType_t typeA = CUDA_R_32F;
+    // cudaDataType_t typeB = CUDA_R_32F;
+    // cudaDataType_t typeC = CUDA_R_32F;
+    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
+
+    // Double precision
+    typedef double floatTypeA;
+    typedef double floatTypeB;
+    typedef double floatTypeC;
+    typedef double floatTypeCompute;
+
+    cudaDataType_t typeA = CUDA_R_64F;
+    cudaDataType_t typeB = CUDA_R_64F;
+    cudaDataType_t typeC = CUDA_R_64F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
+    // END
 
     floatTypeCompute alpha = (floatTypeCompute)1.1f;
     floatTypeCompute beta  = (floatTypeCompute)0.f;
@@ -107,14 +120,14 @@ int main()
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    extent['m'] = 96;
-    extent['n'] = 96;
-    extent['u'] = 96;
-    extent['v'] = 64;
-    extent['h'] = 64;
-    extent['k'] = 64;
+    extent['m'] = 95;
+    extent['n'] = 97;
+    extent['u'] = 94;
+    extent['v'] = 63;
+    extent['h'] = 61;
+    extent['k'] = 62;
 
-    double gflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['k'] * extent['h']) /1e9;
+    double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['k'] * extent['h']) /1e12;
 
     std::vector<int64_t> extentC;
     for (auto mode : modeC)
@@ -284,7 +297,7 @@ int main()
      * Run
      **********************/
 
-    for (int algo = (int) CUTENSOR_ALGO_GETT; algo < maxAlgosTC; algo++)
+    for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < maxAlgosTC; algo++)
     {
         double minTimeCUTENSOR = 1e100;
         cutensorStatus_t err;
@@ -340,7 +353,7 @@ int main()
     
         if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
         {
-            printf("cuTensor: %d algo %.2f GFLOPs/s %.2f GB/s\n", algo, gflops / minTimeCUTENSOR, transferedBytes/ minTimeCUTENSOR);
+            printf("cuTensor: %d algo %.2f tflops/s %.2f GB/s\n", algo, tflops / minTimeCUTENSOR, transferedBytes/ minTimeCUTENSOR);
         }
 
         if (bestTime > minTimeCUTENSOR)
@@ -352,7 +365,7 @@ int main()
     }
     /*************************/
 
-    printf("best: %d algo %.2f GFLOP/s %.2f GB/s\n", bestAlgo, gflops / bestTime, transferedBytes / bestTime);
+    printf("best: %d algo %.2f GFLOP/s %.2f GB/s\n", bestAlgo, tflops / bestTime, transferedBytes / bestTime);
 
     /*************************/
     if (A) free(A);
