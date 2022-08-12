@@ -58,11 +58,11 @@ int main()
     cudaDataType_t typeA = CUDA_R_32F;
     cudaDataType_t typeB = CUDA_R_32F;
     cudaDataType_t typeC = CUDA_R_32F;
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
 
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
-    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
+    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
+    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
     // --- Double precision ---
     // printf("Double precision\n");
     // typedef double floatTypeA;

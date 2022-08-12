@@ -6,7 +6,7 @@ CXX_FLAGS=-std=c++11 -O3 -I${CUTENSOR_ROOT}/include -I../../include \
 						 -gencode=arch=compute_70,code=sm_70 \
 						 -use_fast_math -lineinfo
 
-all: contraction gemm_cublas cublas_benchmark
+all: contraction gemm_cublas cublas_benchmark two_index_matmul
 
 contraction: contraction.cu
 	nvcc contraction.cu -o  contraction ${CXX_FLAGS}
@@ -17,9 +17,11 @@ cublas_benchmark: cublas_benchmark.cu
 gemm_cublas: gemm_cublas.cu
 	nvcc gemm_cublas.cu -o  gemm_cublas ${CXX_FLAGS}
 
+two_index_matmul: two_index_matmul.cu
+	nvcc two_index_matmul.cu -o  two_index_matmul ${CXX_FLAGS}
 
 clean:
-	rm -f contraction gemm_cublas cublas_benchmark
+	rm -f contraction gemm_cublas cublas_benchmark two_index_matmul
 
 nsys_profile:
 	nsys profile -t cuda,cublas,nvtx --stats=true --cuda-memory-usage=true --gpu-metrics-device=all ./contraction

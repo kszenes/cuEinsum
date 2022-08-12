@@ -83,53 +83,67 @@ int main()
      * Computing: C_{m,u,n,v} = alpha * A_{m,h,k,n} B_{u,k,v,h} + beta * C_{m,u,n,v}
      **********************/
 
-    // std::vector<int> modeC{'m','u','n','v'};
-    // std::vector<int> modeA{'m','h','k','n'};
-    // std::vector<int> modeB{'u','k','v','h'};
-    // int nmodeA = modeA.size();
-    // int nmodeB = modeB.size();
-    // int nmodeC = modeC.size();
-
-    // std::unordered_map<int, int64_t> extent;
-    // extent['m'] = 96;
-    // extent['n'] = 96;
-    // extent['u'] = 96;
-    // extent['v'] = 64;
-    // extent['h'] = 64;
-    // extent['k'] = 64;
-
-    // extent['m'] = 255;
-    // extent['n'] = 127;
-    // extent['u'] = 129;
-    // extent['v'] = 65;
-    // extent['h'] = 62;
-    // extent['k'] = 63;
-
-    // double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['k'] * extent['h']) /1e12;
-
-    /**************
-      MATMUL
-    **************/
-    std::vector<int> modeA{'i','j'};
-    std::vector<int> modeB{'j','k'};
-    std::vector<int> modeC{'i','k'};
+    std::vector<int> modeC{'m','u','n','v'};
+    std::vector<int> modeA{'m','h','k','n'};
+    std::vector<int> modeB{'u','k','v','h'};
     int nmodeA = modeA.size();
     int nmodeB = modeB.size();
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    const int size = 1 << 14;
-    const int i = size;
-    const int j = size;
-    const int k = size;
+    extent['m'] = 96;
+    extent['n'] = 96;
+    extent['u'] = 96;
+    extent['v'] = 64;
+    extent['h'] = 64;
+    extent['k'] = 64;
 
-    extent['i'] = i;
-    extent['j'] = j;
-    extent['k'] = k;
+    double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['h'] * extent['k']) /1e12;
+
+    /******************
+       ijn, jmk -> inkm
+    ******************/
+
+    // std::vector<int> modeC{'i','j',,'n'};
+    // std::vector<int> modeA{'j','m','k'};
+    // std::vector<int> modeB{'i','n','k','m'};
+    // int nmodeA = modeA.size();
+    // int nmodeB = modeB.size();
+    // int nmodeC = modeC.size();
+
+    // std::unordered_map<int, int64_t> extent;
+    // extent['i'] = 255;
+    // extent['j'] = 127;
+    // extent['k'] = 129;
+    // extent['n'] = 65;
+    // extent['m'] = 62;
+    // extent['l'] = 63;
+
+    // double tflops = (2.0 * extent['i'] * extent['j'] * extent['k'] * extent['n'] * extent['m'], extent['l']) /1e12;
+
+    /**************
+      MATMUL
+    **************/
+    // std::vector<int> modeA{'i','j'};
+    // std::vector<int> modeB{'j','k'};
+    // std::vector<int> modeC{'i','k'};
+    // int nmodeA = modeA.size();
+    // int nmodeB = modeB.size();
+    // int nmodeC = modeC.size();
+
+    // std::unordered_map<int, int64_t> extent;
+    // const int size = 1 << 14;
+    // const int i = size;
+    // const int j = size;
+    // const int k = size;
+
+    // extent['i'] = i;
+    // extent['j'] = j;
+    // extent['k'] = k;
 
 
     // // computes FLOPS
-    double tflops = (2.0 * extent['i'] * extent['j'] * extent['k']) /1e12;
+    // double tflops = (2.0 * extent['i'] * extent['j'] * extent['k']) /1e12;
 
     std::vector<int64_t> extentC;
     for (auto mode : modeC)
@@ -277,13 +291,13 @@ int main()
 
     cutensorContractionFind_t find;
 
-    // CUDA_CHECK(cutensorInitContractionFind( 
-    //              &handle, &find, 
-    //              CUTENSOR_ALGO_DEFAULT_PATIENT));
-
     CUDA_CHECK(cutensorInitContractionFind( 
                  &handle, &find, 
-                 (cutensorAlgo_t) -6)); // 1 is usually best for matmul
+                 CUTENSOR_ALGO_DEFAULT_PATIENT));
+
+    // CUDA_CHECK(cutensorInitContractionFind( 
+    //              &handle, &find, 
+    //              (cutensorAlgo_t) -6)); // 1 is usually best for matmul
 
     printf("Initialize settings to find algorithm\n");
     /**********************
