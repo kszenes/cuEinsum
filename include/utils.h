@@ -64,6 +64,12 @@ static const char *_cudaGetErrorEnum(cublasStatus_t error) {
 }
 #endif
 
+#ifdef CUTENSOR_MAJOR
+static const char *_cudaGetErrorEnum(cutensorStatus_t error) {
+    return cutensorGetErrorString(error);
+}
+#endif
+
 #ifdef __DRIVER_TYPES_H__
 /// Print the error message if a CUDA API execution failed.
 template <typename T>

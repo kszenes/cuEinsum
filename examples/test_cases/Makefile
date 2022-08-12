@@ -1,0 +1,26 @@
+CXX_FLAGS=-std=c++11 -O3 -I${CUTENSOR_ROOT}/include -I../../include \
+						 -L${CUTENSOR_ROOT}/lib/11 -lcutensor -lcudart -lcublas \
+						 --compiler-options "-Wall -Wextra" \
+						 -gencode=arch=compute_86,code=sm_86 \
+						 -gencode=arch=compute_80,code=sm_80 \
+						 -gencode=arch=compute_70,code=sm_70 \
+						 -use_fast_math -lineinfo
+
+all: contraction gemm_cublas cublas_benchmark
+
+contraction: contraction.cu
+	nvcc contraction.cu -o  contraction ${CXX_FLAGS}
+
+cublas_benchmark: cublas_benchmark.cu
+	nvcc cublas_benchmark.cu -o  cublas_benchmark ${CXX_FLAGS}
+
+gemm_cublas: gemm_cublas.cu
+	nvcc gemm_cublas.cu -o  gemm_cublas ${CXX_FLAGS}
+
+
+clean:
+	rm -f contraction gemm_cublas cublas_benchmark
+
+nsys_profile:
+	nsys profile -t cuda,cublas,nvtx --stats=true --cuda-memory-usage=true --gpu-metrics-device=all ./contraction
+
