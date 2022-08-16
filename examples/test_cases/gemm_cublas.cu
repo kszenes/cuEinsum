@@ -42,7 +42,7 @@
 
 int main()
 {
-    const int runs = 3;
+    const int runs = 1;
     // --- Single precision ---
     typedef float floatTypeA;
     typedef float floatTypeB;
@@ -71,7 +71,7 @@ int main()
 
     printf("Include headers and define data types\n");
 
-    const int size = 1 << 11;
+    const int size = 1 << 13;
     const int i = size;
     const int j = size;
     const int k = size;

@@ -46,7 +46,7 @@ int main()
 {
     printf("cuTENSOR version: %zu\n", cutensorGetVersion());
 
-    const int runs = 3;
+    const int runs = 1;
 
     // --- Single precision ---
     printf("Single precision\n");
@@ -63,6 +63,7 @@ int main()
 
     // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
     // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
+
     // --- Double precision ---
     // printf("Double precision\n");
     // typedef double floatTypeA;
@@ -123,8 +124,9 @@ int main()
     std::unordered_map<int, int64_t> extent;
     int size = 1 << 13;
     const int i = size;
-    const int j = size << 1;
-    const int k = size >> 1;
+    const int j = size;
+    const int k = size;
+    printf("i = %d; j = %d; k = %d\n", i, j, k);
 
     extent['i'] = i;
     extent['j'] = j;
@@ -163,6 +165,9 @@ int main()
     size_t sizeA = sizeof(floatTypeA) * elementsA;
     size_t sizeB = sizeof(floatTypeB) * elementsB;
     size_t sizeC = sizeof(floatTypeC) * elementsC;
+    printf("Elements A: %zu\n", elementsA);
+    printf("Elements B: %zu\n", elementsB);
+    printf("Elements C: %zu\n", elementsC);
     printf("Total memory: %.2f GiB\n", (sizeA + sizeB + sizeC)/1024./1024./1024);
 
     floatTypeA *A_d, *B_d, *C_d;
@@ -335,13 +340,13 @@ int main()
 
     cutensorContractionFind_t find;
 
-    // CUDA_CHECK(cutensorInitContractionFind( 
-    //              &handle, &find, 
-    //              CUTENSOR_ALGO_DEFAULT_PATIENT));
-
     CUDA_CHECK(cutensorInitContractionFind( 
                  &handle, &find, 
-                 (cutensorAlgo_t) -6)); // 1 is usually best for matmul
+                 CUTENSOR_ALGO_DEFAULT_PATIENT));
+
+    // CUDA_CHECK(cutensorInitContractionFind( 
+    //              &handle, &find, 
+    //              (cutensorAlgo_t) -6)); // 1 is usually best for matmul
 
     printf("Initialize settings to find algorithm\n");
     /**********************

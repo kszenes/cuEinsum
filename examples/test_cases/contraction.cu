@@ -57,9 +57,9 @@ int main()
     cudaDataType_t typeA = CUDA_R_32F;
     cudaDataType_t typeB = CUDA_R_32F;
     cudaDataType_t typeC = CUDA_R_32F;
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
 
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
+    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
 
     // --- Double precision ---
     // printf("Double precision\n");
@@ -83,22 +83,22 @@ int main()
      * Computing: C_{m,u,n,v} = alpha * A_{m,h,k,n} B_{u,k,v,h} + beta * C_{m,u,n,v}
      **********************/
 
-    std::vector<int> modeC{'m','u','n','v'};
-    std::vector<int> modeA{'m','h','k','n'};
-    std::vector<int> modeB{'u','k','v','h'};
-    int nmodeA = modeA.size();
-    int nmodeB = modeB.size();
-    int nmodeC = modeC.size();
+    // std::vector<int> modeC{'m','u','n','v'};
+    // std::vector<int> modeA{'m','h','k','n'};
+    // std::vector<int> modeB{'u','k','v','h'};
+    // int nmodeA = modeA.size();
+    // int nmodeB = modeB.size();
+    // int nmodeC = modeC.size();
 
-    std::unordered_map<int, int64_t> extent;
-    extent['m'] = 96;
-    extent['n'] = 96;
-    extent['u'] = 96;
-    extent['v'] = 64;
-    extent['h'] = 64;
-    extent['k'] = 64;
+    // std::unordered_map<int, int64_t> extent;
+    // extent['m'] = 96;
+    // extent['n'] = 96;
+    // extent['u'] = 96;
+    // extent['v'] = 64;
+    // extent['h'] = 64;
+    // extent['k'] = 64;
 
-    double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['h'] * extent['k']) /1e12;
+    // double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['h'] * extent['k']) /1e12;
 
     /******************
        ijn, jmk -> inkm
@@ -124,26 +124,26 @@ int main()
     /**************
       MATMUL
     **************/
-    // std::vector<int> modeA{'i','j'};
-    // std::vector<int> modeB{'j','k'};
-    // std::vector<int> modeC{'i','k'};
-    // int nmodeA = modeA.size();
-    // int nmodeB = modeB.size();
-    // int nmodeC = modeC.size();
+    std::vector<int> modeA{'i','j'};
+    std::vector<int> modeB{'j','k'};
+    std::vector<int> modeC{'i','k'};
+    int nmodeA = modeA.size();
+    int nmodeB = modeB.size();
+    int nmodeC = modeC.size();
 
-    // std::unordered_map<int, int64_t> extent;
-    // const int size = 1 << 14;
-    // const int i = size;
-    // const int j = size;
-    // const int k = size;
+    std::unordered_map<int, int64_t> extent;
+    const int size = 1 << 14;
+    const int i = size;
+    const int j = size;
+    const int k = size;
 
-    // extent['i'] = i;
-    // extent['j'] = j;
-    // extent['k'] = k;
+    extent['i'] = i;
+    extent['j'] = j;
+    extent['k'] = k;
 
 
-    // // computes FLOPS
-    // double tflops = (2.0 * extent['i'] * extent['j'] * extent['k']) /1e12;
+    // computes FLOPS
+    double tflops = (2.0 * extent['i'] * extent['j'] * extent['k']) /1e12;
 
     std::vector<int64_t> extentC;
     for (auto mode : modeC)

@@ -1,2 +1,10 @@
 lib
 .vscode
+build
+CMakeFiles
+*.ncu-rep
+*.qdrep
+*.sqlite
+CMakeCache.txt
+CMakeLists.txt
+cmake_install.cmake

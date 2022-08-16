@@ -52,33 +52,33 @@ int main()
     const int runs = 3;
 
     // --- Single precision ---
-    printf("Single precision\n");
-    typedef float floatTypeA;
-    typedef float floatTypeB;
-    typedef float floatTypeC;
-    typedef float floatTypeCompute;
+    // printf("Single precision\n");
+    // typedef float floatTypeA;
+    // typedef float floatTypeB;
+    // typedef float floatTypeC;
+    // typedef float floatTypeCompute;
 
-    cudaDataType_t typeA = CUDA_R_32F;
-    cudaDataType_t typeB = CUDA_R_32F;
-    cudaDataType_t typeC = CUDA_R_32F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
-    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+    // cudaDataType_t typeA = CUDA_R_32F;
+    // cudaDataType_t typeB = CUDA_R_32F;
+    // cudaDataType_t typeC = CUDA_R_32F;
+    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
+    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
 
     // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
     // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
 
     // --- Double precision ---
-    // printf("Double precision\n");
-    // typedef double floatTypeA;
-    // typedef double floatTypeB;
-    // typedef double floatTypeC;
-    // typedef double floatTypeCompute;
+    printf("Double precision\n");
+    typedef double floatTypeA;
+    typedef double floatTypeB;
+    typedef double floatTypeC;
+    typedef double floatTypeCompute;
 
-    // cudaDataType_t typeA = CUDA_R_64F;
-    // cudaDataType_t typeB = CUDA_R_64F;
-    // cudaDataType_t typeC = CUDA_R_64F;
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    cudaDataType_t typeA = CUDA_R_64F;
+    cudaDataType_t typeB = CUDA_R_64F;
+    cudaDataType_t typeC = CUDA_R_64F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
     // // // --- END ---
 
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
@@ -135,6 +135,7 @@ int main()
     extent['j'] = j;
     extent['k'] = k;
     extent['l'] = l;
+    printf("i = %d; j*k = %d; l = %d\n", i, j*k, l);
 
 
     // // computes FLOPS
