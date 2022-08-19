@@ -36,7 +36,7 @@
 #include <cuda_runtime.h>
 #include <cutensor.h>
 
-#include <cublas_v2.h>
+#include <cublasLt.h>
 #include "utils.h"
 #include "timer.h"
 #include "rmse.h"
@@ -124,8 +124,8 @@ int main()
     std::unordered_map<int, int64_t> extent;
     int size = 1 << 14;
     const int i = size;
-    const int j = size >> 1;
-    const int k = size << 1;
+    const int j = size;
+    const int k = size;
     printf("i = %d; j = %d; k = %d\n", i, j, k);
 
     extent['i'] = i;
@@ -214,55 +214,98 @@ int main()
      * Compute GEMM CUBLAS
      ************/
     printf("Run CUBLAS baseline\n");
-    // floatTypeC *C_cublas;
-    // CUDA_CHECK(cudaMalloc((void**) &C_cublas, sizeC));
-    // CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
+    floatTypeC *C_cublas;
+    CUDA_CHECK(cudaMalloc((void**) &C_cublas, sizeC));
+    CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
+
 
     cudaStream_t s;
-    cublasHandle_t cublas_handle;
+    cublasLtHandle_t lt_handle;
     CUDA_CHECK(cudaStreamCreate(&s));
-    CUDA_CHECK(cublasCreate(&cublas_handle));
+    CUDA_CHECK(cublasLtCreate(&lt_handle));
     // CUDA_CHECK(cublasLoggerConfigure(1, 1, 0, nullptr));
 
-    void* work_cublas;
-    // size_t cublas_worksize = 4*1024*1024; // 4 MiB
-    size_t cublas_worksize = 0;
-    CUDA_CHECK(cudaMalloc(&work_cublas, cublas_worksize));
-    CUDA_CHECK(cublasSetWorkspace(cublas_handle, &work_cublas, cublas_worksize));
+    int returnedResults                             = 0;
+    cublasLtMatmulHeuristicResult_t heuristicResult = {};
 
+    void* cublas_work;
+    size_t cublas_worksize = 4*1024*1024; // 4 MiB
+    // size_t cublas_worksize = 0;
+    CUDA_CHECK(cudaMalloc(&cublas_work, cublas_worksize));
+
+    cublasLtMatmulDesc_t operationDesc = NULL;
+    cublasLtMatrixLayout_t Adesc = NULL, Bdesc = NULL, Cdesc = NULL;
+    cublasLtMatmulPreference_t preference = NULL;
+
+    // create operation desciriptor; see cublasLtMatmulDescAttributes_t for details about defaults; here we just need to
+    // set the transforms for A and B
+    cublasOperation_t transa = CUBLAS_OP_N;
+    cublasOperation_t transb = CUBLAS_OP_N;
+    CUDA_CHECK(cublasLtMatmulDescCreate(&operationDesc, cublasComputeType, typeA));
+    CUDA_CHECK(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
+    CUDA_CHECK(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transa)));
+
+    // create matrix descriptors, we are good with the details here so no need to set any extra attributes
+    CUDA_CHECK(cublasLtMatrixLayoutCreate(&Adesc, typeA, transa == CUBLAS_OP_N ? i : j, transa == CUBLAS_OP_N ? j : i, i));
+    CUDA_CHECK(cublasLtMatrixLayoutCreate(&Bdesc, typeB, transb == CUBLAS_OP_N ? j : k, transb == CUBLAS_OP_N ? k : j, j));
+    CUDA_CHECK(cublasLtMatrixLayoutCreate(&Cdesc, typeC, i, k, i));
+
+    // create preference handle; here we could use extra attributes to disable tensor ops or to make sure algo selected
+    // will work with badly aligned A, B, C; here for simplicity we just assume A,B,C are always well aligned (e.g.
+    // directly come from cudaMalloc)
+    CUDA_CHECK(cublasLtMatmulPreferenceCreate(&preference));
+    CUDA_CHECK(cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &cublas_work, sizeof(cublas_worksize)));
+    CUDA_CHECK(cublasLtMatmulAlgoGetHeuristic(lt_handle, operationDesc, Adesc, Bdesc, Cdesc, Cdesc, preference, 1, &heuristicResult, &returnedResults));
+
+    if (returnedResults == 0) {
+        CUDA_CHECK(CUBLAS_STATUS_NOT_SUPPORTED);
+    }
 
     double av_time_cublas = 0.0;
     double min_time_cublas = 1e8;
     for (int iter = 0; iter < runs; iter++) {
         GPUTimer timer;
-        CUDA_CHECK(cublasGemmEx(
-                    cublas_handle, 
-                    CUBLAS_OP_N, CUBLAS_OP_N, 
-                    i, k, j, 
-                    &alpha, 
-                    A_d, typeA, i, 
-                    B_d, typeB, j, 
-                    &beta, 
-                    C_d, typeC, i,
-                    cublasComputeType,
-                    CUBLAS_GEMM_DEFAULT)); // warmup
-        timer.start();
-        CUDA_CHECK(cublasGemmEx(
-                    cublas_handle, 
-                    CUBLAS_OP_N, CUBLAS_OP_N, 
-                    i, k, j, 
-                    &alpha, 
-                    A_d, typeA, i, 
-                    B_d, typeB, j, 
-                    &beta, 
-                    C_d, typeC, i,
-                    cublasComputeType,
-                    CUBLAS_GEMM_DEFAULT_TENSOR_OP)); // warmup
+
+    CUDA_CHECK(cublasLtMatmul(lt_handle,
+                                     operationDesc,
+                                     &alpha,
+                                     A,
+                                     Adesc,
+                                     B,
+                                     Bdesc,
+                                     &beta,
+                                     C,
+                                     Cdesc,
+                                     C,
+                                     Cdesc,
+                                     &heuristicResult.algo,
+                                     cublas_work,
+                                     cublas_worksize,
+                                     s));
+
+    timer.start();
+    CUDA_CHECK(cublasLtMatmul(lt_handle,
+                                     operationDesc,
+                                     &alpha,
+                                     A,
+                                     Adesc,
+                                     B,
+                                     Bdesc,
+                                     &beta,
+                                     C,
+                                     Cdesc,
+                                     C,
+                                     Cdesc,
+                                     &heuristicResult.algo,
+                                     cublas_work,
+                                     cublas_worksize,
+                                     s));
         auto time  = timer.seconds();
         min_time_cublas = (time  < min_time_cublas) ? time : min_time_cublas;
         av_time_cublas += time / runs;
     }
     printf("CUBLAS: %.2f GB/s %.2f TFLOP/s\n", transferedBytes / av_time_cublas, tflops / av_time_cublas);
+    return 0;
 
 
     /*************************
@@ -275,8 +318,6 @@ int main()
      * Create Tensor Descriptors
      **********************/
 
-    GPUTimer timer;
-    timer.start();
     cutensorTensorDescriptor_t descA;
     CUDA_CHECK(cutensorInitTensorDescriptor(&handle,
                  &descA,
@@ -301,38 +342,34 @@ int main()
                  NULL,/*stride*/
                  typeC, CUTENSOR_OP_IDENTITY));
 
-    auto time = timer.seconds();
-    printf("Initialize cuTENSOR and tensor descriptors (%f sec)\n", time);
+    printf("Initialize cuTENSOR and tensor descriptors\n");
     /**********************************************
      * Retrieve the memory alignment for each tensor
      **********************************************/ 
 
-    timer.start();
-    uint32_t alignmentRequirementA;
-    CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
-                A_d,
-                &descA,
-                &alignmentRequirementA));
+     uint32_t alignmentRequirementA;
+     CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
+                  A_d,
+                  &descA,
+                  &alignmentRequirementA));
 
-    uint32_t alignmentRequirementB;
-    CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
-                B_d,
-                &descB,
-                &alignmentRequirementB));
+     uint32_t alignmentRequirementB;
+     CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
+                  B_d,
+                  &descB,
+                  &alignmentRequirementB));
 
-    uint32_t alignmentRequirementC;
-    CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
-                C_d,
-                &descC, 
-                &alignmentRequirementC));
+     uint32_t alignmentRequirementC;
+     CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
+                  C_d,
+                  &descC, 
+                  &alignmentRequirementC));
 
-    time = timer.seconds();
-    printf("Query best alignment requirement for our pointers (%f sec)\n", time);
+    printf("Query best alignment requirement for our pointers\n");
     /*******************************
      * Create Contraction Descriptor
      *******************************/
 
-    timer.start();
     cutensorContractionDescriptor_t desc;
     CUDA_CHECK(cutensorInitContractionDescriptor(&handle, 
                  &desc,
@@ -342,13 +379,11 @@ int main()
                  &descC, modeC.data(), alignmentRequirementC,
                  typeCompute));
 
-    time = timer.seconds();
-    printf("Initialize contraction descriptor (%f sec)\n", time);
+    printf("Initialize contraction descriptor\n");
     /**************************
     * Set the algorithm to use
     ***************************/
 
-    timer.start();
     cutensorContractionFind_t find;
 
     CUDA_CHECK(cutensorInitContractionFind( 
@@ -359,20 +394,18 @@ int main()
     //              &handle, &find, 
     //              (cutensorAlgo_t) -6)); // 1 is usually best for matmul
 
-    time = timer.seconds();
-    printf("Initialize settings to find algorithm (%f sec)\n", time);
+    printf("Initialize settings to find algorithm\n");
     /**********************
      * Query workspace
      **********************/
 
-    timer.start();
     uint64_t worksize = 0;
     CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
                  &desc,
                  &find,
                  CUTENSOR_WORKSPACE_MAX, &worksize));
 
-    // worksize = 0;
+    worksize = 1024*1024*1024;
 
     void *work = nullptr;
     if (worksize > 0)
@@ -388,14 +421,11 @@ int main()
     double bestTime = 1e100;
     int bestAlgo = -1;
 
-    time = timer.seconds();
-    printf("Sizez[MiB]: A = %zu ; B = %zu; C = %zu\n", sizeA/1024/1024, sizeB/1024/1024, sizeC/1024/1024);
-    printf("Query recommended workspace size (%zu MiB) and allocate it (%f sec)\n", worksize/1024/1024, time);
+    printf("Query recommended workspace size (%zu MiB) and allocate it\n", worksize/1024/1024);
     /**************************
      * Create Contraction Plan
      **************************/
 
-    timer.start();
     cutensorContractionPlan_t plan;
     CUDA_CHECK(cutensorInitContractionPlan(&handle,
                  &plan,
@@ -403,8 +433,7 @@ int main()
                  &find,
                  worksize));
 
-    time = timer.seconds();
-    printf("Create plan for contraction (%f sec)\n", time);
+    printf("Create plan for contraction\n");
     /**********************
      * Run
      **********************/
@@ -473,8 +502,8 @@ int main()
 
     }
 
-    // floatTypeA rmse_diff = rmse(j*k, C_d, C_cublas);
-    // printf("RMSE = %f\n", rmse_diff);
+    floatTypeA rmse_diff = rmse(j*k, C_d, C_cublas);
+    printf("RMSE = %f\n", rmse_diff);
 
     printf("Execute contraction from plan\n");
     /*************************/
@@ -500,8 +529,15 @@ int main()
     if (C_d) cudaFree(C_d);
     if (work) cudaFree(work);
 
-    // if (C_cublas) CUDA_CHECK(cudaFree(C_cublas));
-    if (cublas_handle) CUDA_CHECK(cublasDestroy(cublas_handle));
+    if (C_cublas) CUDA_CHECK(cudaFree(C_cublas));
+    if (lt_handle) CUDA_CHECK(cublasLtDestroy(lt_handle));
+    // descriptors are no longer needed as all GPU work was already enqueued
+    if (preference) CUDA_CHECK(cublasLtMatmulPreferenceDestroy(preference));
+    if (Cdesc) CUDA_CHECK(cublasLtMatrixLayoutDestroy(Cdesc));
+    if (Bdesc) CUDA_CHECK(cublasLtMatrixLayoutDestroy(Bdesc));
+    if (Adesc) CUDA_CHECK(cublasLtMatrixLayoutDestroy(Adesc));
+    if (operationDesc) CUDA_CHECK(cublasLtMatmulDescDestroy(operationDesc));
+    if (cublas_work) CUDA_CHECK(cudaFree(cublas_work));
 
     return 0;
 }

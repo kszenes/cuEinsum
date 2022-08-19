@@ -52,33 +52,33 @@ int main()
     const int runs = 3;
 
     // --- Single precision ---
-    // printf("Single precision\n");
-    // typedef float floatTypeA;
-    // typedef float floatTypeB;
-    // typedef float floatTypeC;
-    // typedef float floatTypeCompute;
+    printf("Single precision\n");
+    typedef float floatTypeA;
+    typedef float floatTypeB;
+    typedef float floatTypeC;
+    typedef float floatTypeCompute;
 
-    // cudaDataType_t typeA = CUDA_R_32F;
-    // cudaDataType_t typeB = CUDA_R_32F;
-    // cudaDataType_t typeC = CUDA_R_32F;
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+    cudaDataType_t typeA = CUDA_R_32F;
+    cudaDataType_t typeB = CUDA_R_32F;
+    cudaDataType_t typeC = CUDA_R_32F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
 
     // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
     // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
 
     // --- Double precision ---
-    printf("Double precision\n");
-    typedef double floatTypeA;
-    typedef double floatTypeB;
-    typedef double floatTypeC;
-    typedef double floatTypeCompute;
+    // printf("Double precision\n");
+    // typedef double floatTypeA;
+    // typedef double floatTypeB;
+    // typedef double floatTypeC;
+    // typedef double floatTypeCompute;
 
-    cudaDataType_t typeA = CUDA_R_64F;
-    cudaDataType_t typeB = CUDA_R_64F;
-    cudaDataType_t typeC = CUDA_R_64F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
-    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    // cudaDataType_t typeA = CUDA_R_64F;
+    // cudaDataType_t typeB = CUDA_R_64F;
+    // cudaDataType_t typeC = CUDA_R_64F;
+    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
+    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
     // // // --- END ---
 
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
@@ -126,10 +126,10 @@ int main()
 
     std::unordered_map<int, int64_t> extent;
     const int size = 1 << 9;
-    const int i = size;
+    const int i = size << 2;
     const int j = size;
     const int k = size;
-    const int l = size;
+    const int l = size << 3;
 
     extent['i'] = i;
     extent['j'] = j;
@@ -175,6 +175,10 @@ int main()
     printf("Elements B: %zu\n", elementsB);
     printf("Elements C: %zu\n", elementsC);
     printf("Total memory: %.2f GiB\n", (sizeA + sizeB + sizeC)/1024./1024./1024);
+
+    double transferedBytes = sizeC + sizeA + sizeB;
+    transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
+    transferedBytes /= 1e9;
 
     floatTypeA *A_d, *B_d, *C_d;
     CUDA_CHECK(cudaMalloc((void**) &A_d, sizeA));
@@ -224,7 +228,7 @@ int main()
     cublasHandle_t cublas_handle;
     CUDA_CHECK(cudaStreamCreate(&s));
     CUDA_CHECK(cublasCreate(&cublas_handle));
-    CUDA_CHECK(cublasSetMathMode(cublas_handle, CUBLAS_PEDANTIC_MATH));
+    // CUDA_CHECK(cublasSetMathMode(cublas_handle, CUBLAS_PEDANTIC_MATH));
 
     double av_time_cublas = 0.0;
     double min_time_cublas = 1e8;
@@ -364,6 +368,7 @@ int main()
                  &desc,
                  &find,
                  CUTENSOR_WORKSPACE_RECOMMENDED, &worksize));
+    // worksize = 0;
 
     void *work = nullptr;
     if (worksize > 0)
@@ -375,7 +380,13 @@ int main()
         }
     } 
 
-    printf("Query recommended workspace size and allocate it\n");
+    int32_t maxAlgosTC = 0;
+    cutensorContractionMaxAlgos(&maxAlgosTC);
+    double bestTime = 1e100;
+    int bestAlgo = -1;
+
+    printf("Sizez[MiB]: A = %zu ; B = %zu; C = %zu\n", sizeA/1024/1024, sizeB/1024/1024, sizeC/1024/1024);
+    printf("Query recommended workspace size (%zu MB) and allocate it\n", worksize/1024/1024);
     /**************************
      * Create Contraction Plan
      **************************/
@@ -392,38 +403,63 @@ int main()
      * Run
      **********************/
 
-    double minTimeCUTENSOR = 1e100;
-    double avTime = 0;
     cutensorStatus_t err;
-    for (int i=0; i < runs; ++i)
-    {
-        cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice);
-        cudaDeviceSynchronize();
-
-        // Set up timing
-        GPUTimer timer;
-        err = cutensorContraction(&handle,
-                                  &plan,
-                                  (void*) &alpha, A_d, B_d,
-                                  (void*) &beta,  C_d, C_d, 
-                                  work, worksize, 0 /* stream */);
-        timer.start();
-
-        err = cutensorContraction(&handle,
-                                  &plan,
-                                  (void*) &alpha, A_d, B_d,
-                                  (void*) &beta,  C_d, C_d, 
-                                  work, worksize, 0 /* stream */);
-
-        // Synchronize and measure timing
-        auto time = timer.seconds();
-
-        if (err != CUTENSOR_STATUS_SUCCESS)
+    for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < 6; algo++) {
+        double minTimeCUTENSOR = 1e100;
+        double avTime = 0;
+        for (int i=0; i < runs; ++i)
         {
-            printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+            CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaDeviceSynchronize());
+
+            cutensorContractionFind_t find;
+            err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
+
+            if (err == CUTENSOR_STATUS_SUCCESS) {
+                cutensorContractionPlan_t plan;
+                err = cutensorInitContractionPlan(&handle,
+                                                  &plan,
+                                                  &desc,
+                                                  &find,
+                                                  worksize);
+                // Set up timing
+                if (err == CUTENSOR_STATUS_SUCCESS) {
+                    GPUTimer timer;
+                    err = cutensorContraction(&handle,
+                                            &plan,
+                                            (void*) &alpha, A_d, B_d,
+                                            (void*) &beta,  C_d, C_d, 
+                                            work, worksize, 0 /* stream */);
+                    timer.start();
+
+                    err = cutensorContraction(&handle,
+                                            &plan,
+                                            (void*) &alpha, A_d, B_d,
+                                            (void*) &beta,  C_d, C_d, 
+                                            work, worksize, 0 /* stream */);
+
+                    // Synchronize and measure timing
+                    auto time = timer.seconds();
+
+                    if (err != CUTENSOR_STATUS_SUCCESS)
+                    {
+                        printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+                    }
+                    avTime += time / runs;
+                    minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
+                }
+            }
         }
-        avTime += time / runs;
-        minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
+        if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
+        {
+            printf("cuTensor: %d algo %.2f GB/s %.2f TFLOP/s\n", algo, transferedBytes / minTimeCUTENSOR, tflops / avTime);
+        }
+
+        if (bestTime > minTimeCUTENSOR)
+        {
+            bestTime = minTimeCUTENSOR;
+            bestAlgo = algo;
+        }
     }
 
     // floatTypeA rmse_true = rmse_host(i, j*k, l, alpha, A, B, C_cublas);
@@ -435,20 +471,18 @@ int main()
     printf("Execute contraction from plan\n");
     /*************************/
 
-    double transferedBytes = sizeC + sizeA + sizeB;
-    transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
-    transferedBytes /= 1e9;
     printf("\nRESULTS from %d runs:\n", runs);
-    printf("Time cuTENSOR[s]: Best: %.4f; Mean %.4f\n",
-            minTimeCUTENSOR, avTime);
+    // printf("Time cuTENSOR[s]: Best: %.4f; Mean %.4f\n",
+            // minTimeCUTENSOR, avTime);
     printf("Time cuBLAS[s]: Best: %.4f; Mean %.4f\n",
             min_time_cublas, av_time_cublas);
     printf("Compute cuBLAS [TFLOPS/s]: Best: %.4f;  Mean %.4f\n",
             tflops / min_time_cublas, tflops/ av_time_cublas);
-    printf("Compute cuTENSOR [TFLOPS/s]: Best: %.4f;  Mean %.4f\n",
-            tflops / minTimeCUTENSOR, tflops/ avTime);
-    printf("Memory [GB/s]: Best: %.2f;  Mean: %.2f\n",
-            transferedBytes / minTimeCUTENSOR, transferedBytes / avTime);
+    printf("CUTENSOR best: %d algo %.2f GB/s %.2f TFLOP/s\n", bestAlgo, transferedBytes / bestTime, tflops / bestTime);
+    // printf("Compute cuTENSOR [TFLOPS/s]: Best: %.4f;  Mean %.4f\n",
+            // tflops / minTimeCUTENSOR, tflops/ avTime);
+    // printf("Memory [GB/s]: Best: %.2f;  Mean: %.2f\n",
+            // transferedBytes / minTimeCUTENSOR, transferedBytes / avTime);
 
     if (A) free(A);
     if (B) free(B);

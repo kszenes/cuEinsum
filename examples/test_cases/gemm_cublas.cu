@@ -44,26 +44,26 @@ int main()
 {
     const int runs = 1;
     // --- Single precision ---
-    typedef float floatTypeA;
-    typedef float floatTypeB;
-    typedef float floatTypeC;
-    typedef float floatTypeCompute;
-    cudaDataType_t typeA = CUDA_R_32F;
-    cudaDataType_t typeB = CUDA_R_32F;
-    cudaDataType_t typeC = CUDA_R_32F;
+    // typedef float floatTypeA;
+    // typedef float floatTypeB;
+    // typedef float floatTypeC;
+    // typedef float floatTypeCompute;
+    // cudaDataType_t typeA = CUDA_R_32F;
+    // cudaDataType_t typeB = CUDA_R_32F;
+    // cudaDataType_t typeC = CUDA_R_32F;
     // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
 
-    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
+    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
 
     // --- Double precision ---
-    // typedef double floatTypeA;
-    // typedef double floatTypeB;
-    // typedef double floatTypeC;
-    // typedef double floatTypeCompute;
-    // cudaDataType_t typeA = CUDA_R_64F;
-    // cudaDataType_t typeB = CUDA_R_64F;
-    // cudaDataType_t typeC = CUDA_R_64F;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    typedef double floatTypeA;
+    typedef double floatTypeB;
+    typedef double floatTypeC;
+    typedef double floatTypeCompute;
+    cudaDataType_t typeA = CUDA_R_64F;
+    cudaDataType_t typeB = CUDA_R_64F;
+    cudaDataType_t typeC = CUDA_R_64F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
     // --- END ---
 
     floatTypeCompute alpha = (floatTypeCompute)1.4f;
@@ -127,9 +127,9 @@ int main()
     CUDA_CHECK(cudaMemcpy(B_d, B, sizeB, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
 
-    floatTypeA *C_gemm;
-    CUDA_CHECK(cudaMalloc((void**) &C_gemm, sizeC));
-    CUDA_CHECK(cudaMemcpy(C_gemm, C, sizeC, cudaMemcpyHostToDevice));
+    // floatTypeA *C_gemm;
+    // CUDA_CHECK(cudaMalloc((void**) &C_gemm, sizeC));
+    // CUDA_CHECK(cudaMemcpy(C_gemm, C, sizeC, cudaMemcpyHostToDevice));
 
     /*************
      * Compute DGEMM CUBLAS
@@ -139,17 +139,24 @@ int main()
     CUDA_CHECK(cudaStreamCreate(&s));
     CUDA_CHECK(cublasCreate(&cublas_handle));
 
+    // void* work_cublas;
+    // size_t cublas_worksize = 4*1024^3; // 4 MiB
+    // // size_t cublas_worksize = 0;
+
+    // CUDA_CHECK(cudaMalloc(&work_cublas, cublas_worksize));
+    // CUDA_CHECK(cublasSetWorkspace(cublas_handle, &work_cublas, cublas_worksize));
+
     double av_time_cublas = 0.0;
     double min_time_cublas = 1e8;
-    CUDA_CHECK(cublasSgemm(
-                cublas_handle,
-                CUBLAS_OP_N, CUBLAS_OP_N,
-                i, j, k,
-                &alpha,
-                A_d, i,
-                B_d, k,
-                &beta,
-                C_gemm, i));
+    // CUDA_CHECK(cublasDgemm(
+    //             cublas_handle,
+    //             CUBLAS_OP_N, CUBLAS_OP_N,
+    //             i, j, k,
+    //             &alpha,
+    //             A_d, i,
+    //             B_d, k,
+    //             &beta,
+    //             C_gemm, i));
     for (int iter = 0; iter < runs; iter++) {
         GPUTimer timer;
         CUDA_CHECK(cublasGemmEx(
@@ -185,10 +192,10 @@ int main()
     transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
     transferedBytes /= 1e9;
     
-    auto myRMSE = rmse(elementsC, C_gemm, C_d);
+    // auto myRMSE = rmse(elementsC, C_gemm, C_d);
 
     printf("\nRESULTS from %d runs:\n", runs);
-    printf("RMSE: %f\n", myRMSE);
+    // printf("RMSE: %f\n", myRMSE);
     printf("Time cuBLAS[s]: Best: %.4f; Mean %.4f\n",
             min_time_cublas, av_time_cublas);
     printf("Compute [GFLOPS/s]: Best: %.4f;  Mean %.4f\n",
@@ -202,7 +209,7 @@ int main()
     if (A_d) cudaFree(A_d);
     if (B_d) cudaFree(B_d);
     if (C_d) cudaFree(C_d);
-    if (C_gemm) cudaFree(C_gemm);
+    // if (C_gemm) cudaFree(C_gemm);
 
     if (cublas_handle) CUDA_CHECK(cublasDestroy(cublas_handle));
     return 0;

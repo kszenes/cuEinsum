@@ -46,7 +46,7 @@ int main()
 {
     printf("cuTENSOR version: %zu\n", cutensorGetVersion());
 
-    const int runs = 1;
+    const int runs = 3;
 
     // --- Single precision ---
     printf("Single precision\n");
@@ -122,10 +122,10 @@ int main()
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    int size = 1 << 14;
+    int size = 1 << 13;
     const int i = size;
-    const int j = size >> 1;
-    const int k = size << 1;
+    const int j = size;
+    const int k = size;
     printf("i = %d; j = %d; k = %d\n", i, j, k);
 
     extent['i'] = i;
@@ -181,11 +181,11 @@ int main()
 
 
     floatTypeA *A = (floatTypeA*) malloc(sizeof(floatTypeA) * elementsA);
-    // printf("A malloc successful\n");
+    printf("A malloc successful\n");
     floatTypeB *B = (floatTypeB*) malloc(sizeof(floatTypeB) * elementsB);
-    // printf("B malloc successful\n");
+    printf("B malloc successful\n");
     floatTypeC *C = (floatTypeC*) malloc(sizeof(floatTypeC) * elementsC);
-    // printf("C malloc successful\n");
+    printf("C malloc successful\n");
 
     if (A == NULL || B == NULL || C == NULL)
     {
@@ -214,22 +214,15 @@ int main()
      * Compute GEMM CUBLAS
      ************/
     printf("Run CUBLAS baseline\n");
-    // floatTypeC *C_cublas;
-    // CUDA_CHECK(cudaMalloc((void**) &C_cublas, sizeC));
-    // CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
+    floatTypeC *C_cublas;
+    CUDA_CHECK(cudaMalloc((void**) &C_cublas, sizeC));
+    CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
 
     cudaStream_t s;
     cublasHandle_t cublas_handle;
     CUDA_CHECK(cudaStreamCreate(&s));
     CUDA_CHECK(cublasCreate(&cublas_handle));
-    // CUDA_CHECK(cublasLoggerConfigure(1, 1, 0, nullptr));
-
-    void* work_cublas;
-    // size_t cublas_worksize = 4*1024*1024; // 4 MiB
-    size_t cublas_worksize = 0;
-    CUDA_CHECK(cudaMalloc(&work_cublas, cublas_worksize));
-    CUDA_CHECK(cublasSetWorkspace(cublas_handle, &work_cublas, cublas_worksize));
-
+    CUDA_CHECK(cublasSetMathMode(cublas_handle, CUBLAS_PEDANTIC_MATH));
 
     double av_time_cublas = 0.0;
     double min_time_cublas = 1e8;
@@ -243,7 +236,7 @@ int main()
                     A_d, typeA, i, 
                     B_d, typeB, j, 
                     &beta, 
-                    C_d, typeC, i,
+                    C_cublas, typeC, i,
                     cublasComputeType,
                     CUBLAS_GEMM_DEFAULT)); // warmup
         timer.start();
@@ -255,14 +248,13 @@ int main()
                     A_d, typeA, i, 
                     B_d, typeB, j, 
                     &beta, 
-                    C_d, typeC, i,
+                    C_cublas, typeC, i,
                     cublasComputeType,
-                    CUBLAS_GEMM_DEFAULT_TENSOR_OP)); // warmup
+                    CUBLAS_GEMM_DEFAULT)); // warmup
         auto time  = timer.seconds();
         min_time_cublas = (time  < min_time_cublas) ? time : min_time_cublas;
         av_time_cublas += time / runs;
     }
-    printf("CUBLAS: %.2f GB/s %.2f TFLOP/s\n", transferedBytes / av_time_cublas, tflops / av_time_cublas);
 
 
     /*************************
@@ -275,8 +267,6 @@ int main()
      * Create Tensor Descriptors
      **********************/
 
-    GPUTimer timer;
-    timer.start();
     cutensorTensorDescriptor_t descA;
     CUDA_CHECK(cutensorInitTensorDescriptor(&handle,
                  &descA,
@@ -301,38 +291,34 @@ int main()
                  NULL,/*stride*/
                  typeC, CUTENSOR_OP_IDENTITY));
 
-    auto time = timer.seconds();
-    printf("Initialize cuTENSOR and tensor descriptors (%f sec)\n", time);
+    printf("Initialize cuTENSOR and tensor descriptors\n");
     /**********************************************
      * Retrieve the memory alignment for each tensor
      **********************************************/ 
 
-    timer.start();
-    uint32_t alignmentRequirementA;
-    CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
-                A_d,
-                &descA,
-                &alignmentRequirementA));
+     uint32_t alignmentRequirementA;
+     CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
+                  A_d,
+                  &descA,
+                  &alignmentRequirementA));
 
-    uint32_t alignmentRequirementB;
-    CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
-                B_d,
-                &descB,
-                &alignmentRequirementB));
+     uint32_t alignmentRequirementB;
+     CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
+                  B_d,
+                  &descB,
+                  &alignmentRequirementB));
 
-    uint32_t alignmentRequirementC;
-    CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
-                C_d,
-                &descC, 
-                &alignmentRequirementC));
+     uint32_t alignmentRequirementC;
+     CUDA_CHECK(cutensorGetAlignmentRequirement(&handle,
+                  C_d,
+                  &descC, 
+                  &alignmentRequirementC));
 
-    time = timer.seconds();
-    printf("Query best alignment requirement for our pointers (%f sec)\n", time);
+    printf("Query best alignment requirement for our pointers\n");
     /*******************************
      * Create Contraction Descriptor
      *******************************/
 
-    timer.start();
     cutensorContractionDescriptor_t desc;
     CUDA_CHECK(cutensorInitContractionDescriptor(&handle, 
                  &desc,
@@ -342,13 +328,11 @@ int main()
                  &descC, modeC.data(), alignmentRequirementC,
                  typeCompute));
 
-    time = timer.seconds();
-    printf("Initialize contraction descriptor (%f sec)\n", time);
+    printf("Initialize contraction descriptor\n");
     /**************************
     * Set the algorithm to use
     ***************************/
 
-    timer.start();
     cutensorContractionFind_t find;
 
     CUDA_CHECK(cutensorInitContractionFind( 
@@ -359,20 +343,16 @@ int main()
     //              &handle, &find, 
     //              (cutensorAlgo_t) -6)); // 1 is usually best for matmul
 
-    time = timer.seconds();
-    printf("Initialize settings to find algorithm (%f sec)\n", time);
+    printf("Initialize settings to find algorithm\n");
     /**********************
      * Query workspace
      **********************/
 
-    timer.start();
     uint64_t worksize = 0;
     CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
                  &desc,
                  &find,
-                 CUTENSOR_WORKSPACE_MAX, &worksize));
-
-    // worksize = 0;
+                 CUTENSOR_WORKSPACE_RECOMMENDED, &worksize));
 
     void *work = nullptr;
     if (worksize > 0)
@@ -383,19 +363,12 @@ int main()
             worksize = 0;
         }
     } 
-    int32_t maxAlgosTC = 0;
-    cutensorContractionMaxAlgos(&maxAlgosTC);
-    double bestTime = 1e100;
-    int bestAlgo = -1;
 
-    time = timer.seconds();
-    printf("Sizez[MiB]: A = %zu ; B = %zu; C = %zu\n", sizeA/1024/1024, sizeB/1024/1024, sizeC/1024/1024);
-    printf("Query recommended workspace size (%zu MiB) and allocate it (%f sec)\n", worksize/1024/1024, time);
+    printf("Query recommended workspace size and allocate it\n");
     /**************************
      * Create Contraction Plan
      **************************/
 
-    timer.start();
     cutensorContractionPlan_t plan;
     CUDA_CHECK(cutensorInitContractionPlan(&handle,
                  &plan,
@@ -403,94 +376,63 @@ int main()
                  &find,
                  worksize));
 
-    time = timer.seconds();
-    printf("Create plan for contraction (%f sec)\n", time);
+    printf("Create plan for contraction\n");
     /**********************
      * Run
      **********************/
 
+    double minTimeCUTENSOR = 1e100;
+    double avTime = 0;
     cutensorStatus_t err;
-    for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < 6; algo++) {
-        double minTimeCUTENSOR = 1e100;
-        double avTime = 0;
-        for (int i=0; i < runs; ++i)
+    for (int i=0; i < runs; ++i)
+    {
+        cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice);
+        cudaDeviceSynchronize();
+
+        // Set up timing
+        GPUTimer timer;
+        err = cutensorContraction(&handle,
+                                  &plan,
+                                  (void*) &alpha, A_d, B_d,
+                                  (void*) &beta,  C_d, C_d, 
+                                  work, worksize, 0 /* stream */);
+        timer.start();
+
+        err = cutensorContraction(&handle,
+                                  &plan,
+                                  (void*) &alpha, A_d, B_d,
+                                  (void*) &beta,  C_d, C_d, 
+                                  work, worksize, 0 /* stream */);
+
+        // Synchronize and measure timing
+        auto time = timer.seconds();
+        printf("Time: %f\n", time);
+
+        if (err != CUTENSOR_STATUS_SUCCESS)
         {
-            CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
-            CUDA_CHECK(cudaDeviceSynchronize());
-
-            cutensorContractionFind_t find;
-            err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
-
-            if (err == CUTENSOR_STATUS_SUCCESS) {
-                cutensorContractionPlan_t plan;
-                err = cutensorInitContractionPlan(&handle,
-                                                  &plan,
-                                                  &desc,
-                                                  &find,
-                                                  worksize);
-
-                if (err == CUTENSOR_STATUS_SUCCESS)
-                {
-                    // Set up timing
-                    GPUTimer timer;
-                    err = cutensorContraction(&handle,
-                                            &plan,
-                                            (void*) &alpha, A_d, B_d,
-                                            (void*) &beta,  C_d, C_d, 
-                                            work, worksize, 0 /* stream */);
-                    timer.start();
-
-                    err = cutensorContraction(&handle,
-                                            &plan,
-                                            (void*) &alpha, A_d, B_d,
-                                            (void*) &beta,  C_d, C_d, 
-                                            work, worksize, 0 /* stream */);
-
-                    // Synchronize and measure timing
-                    auto time = timer.seconds();
-                    // printf("Time: %f\n", time);
-
-                    if (err != CUTENSOR_STATUS_SUCCESS)
-                    {
-                        printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
-                    }
-                    avTime += time / runs;
-                    minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
-                }
-
-            }
+            printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
         }
-        if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
-        {
-            printf("cuTensor: %d algo %.2f GB/s %.2f TFLOP/s\n", algo, transferedBytes / minTimeCUTENSOR, tflops / avTime);
-        }
-
-        if (bestTime > minTimeCUTENSOR)
-        {
-            bestTime = minTimeCUTENSOR;
-            bestAlgo = algo;
-        }
-
+        avTime += time / runs;
+        minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
     }
 
-    // floatTypeA rmse_diff = rmse(j*k, C_d, C_cublas);
-    // printf("RMSE = %f\n", rmse_diff);
+    floatTypeA rmse_diff = rmse(j*k, C_d, C_cublas);
+    printf("RMSE = %f\n", rmse_diff);
 
     printf("Execute contraction from plan\n");
     /*************************/
 
     printf("\nRESULTS from %d runs:\n", runs);
-    // printf("Time cuTENSOR[s]: Best: %.4f; Mean %.4f\n",
-    //         minTimeCUTENSOR, avTime);
+    printf("Time cuTENSOR[s]: Best: %.4f; Mean %.4f\n",
+            minTimeCUTENSOR, avTime);
     printf("Time cuBLAS[s]: Best: %.4f; Mean %.4f\n",
             min_time_cublas, av_time_cublas);
     printf("Compute cuBLAS [TFLOPS/s]: Best: %.4f;  Mean %.4f\n",
             tflops / min_time_cublas, tflops/ av_time_cublas);
-    printf("CUTENSOR best: %d algo %.2f GB/s %.2f TFLOP/s\n", bestAlgo, transferedBytes / bestTime, tflops / bestTime);
-    // printf("Compute cuTENSOR [TFLOPS/s]: Best: %.4f;  Mean %.4f\n",
-    //         tflops / minTimeCUTENSOR, tflops/ avTime);
-    // printf("Memory [GB/s]: Best: %.2f;  Mean: %.2f\n",
-    //         transferedBytes / minTimeCUTENSOR, transferedBytes / avTime);
+    printf("Compute cuTENSOR [TFLOPS/s]: Best: %.4f;  Mean %.4f\n",
+            tflops / minTimeCUTENSOR, tflops/ avTime);
+    printf("Memory [GB/s]: Best: %.2f;  Mean: %.2f\n",
+            transferedBytes / minTimeCUTENSOR, transferedBytes / avTime);
 
     if (A) free(A);
     if (B) free(B);
@@ -500,7 +442,7 @@ int main()
     if (C_d) cudaFree(C_d);
     if (work) cudaFree(work);
 
-    // if (C_cublas) CUDA_CHECK(cudaFree(C_cublas));
+    if (C_cublas) CUDA_CHECK(cudaFree(C_cublas));
     if (cublas_handle) CUDA_CHECK(cublasDestroy(cublas_handle));
 
     return 0;

@@ -2,3 +2,5 @@ contraction
 cublas_benchmark
 gemm_cublas
 two_index_matmul
+cublas_single_algo
+lt_benchmark
