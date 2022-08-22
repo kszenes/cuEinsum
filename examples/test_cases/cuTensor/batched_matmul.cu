@@ -49,40 +49,50 @@ int main()
 {
     // --- Parameters ---
     const int runs = 3;
-    const bool checkRMSE = true;
-    const bool workMaxFlag = true;
+    const bool checkRMSE = false;
+    const int worksizePref = 3; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
     const bool printDebug = false;
+    const bool cublasFlag = true;
+
+    printf("Workspace preference: ");
+    switch (worksizePref) {
+        case 0: printf("0 [MB]\n"); break;
+        case 1: printf("MIN\n"); break;
+        case 2: printf("RECOMMENDED\n"); break;
+        case 3: printf("MAX\n"); break;
+        default: printf("Unsupported worksizePref: %d", worksizePref); exit(-1);
+    }
 
     if (printDebug) printf("cuTENSOR version: %zu\n", cutensorGetVersion());
 
     // --- Single precision ---
-    // printf("Single precision\n");
-    // typedef float floatTypeA;
-    // typedef float floatTypeB;
-    // typedef float floatTypeC;
-    // typedef float floatTypeCompute;
+    printf("Single precision\n");
+    typedef float floatTypeA;
+    typedef float floatTypeB;
+    typedef float floatTypeC;
+    typedef float floatTypeCompute;
 
-    // cudaDataType_t typeA = CUDA_R_32F;
-    // cudaDataType_t typeB = CUDA_R_32F;
-    // cudaDataType_t typeC = CUDA_R_32F;
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+    cudaDataType_t typeA = CUDA_R_32F;
+    cudaDataType_t typeB = CUDA_R_32F;
+    cudaDataType_t typeC = CUDA_R_32F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
 
     // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
     // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
 
     // --- Double precision ---
-    printf("Double precision\n");
-    typedef double floatTypeA;
-    typedef double floatTypeB;
-    typedef double floatTypeC;
-    typedef double floatTypeCompute;
+    // printf("Double precision\n");
+    // typedef double floatTypeA;
+    // typedef double floatTypeB;
+    // typedef double floatTypeC;
+    // typedef double floatTypeCompute;
 
-    cudaDataType_t typeA = CUDA_R_64F;
-    cudaDataType_t typeB = CUDA_R_64F;
-    cudaDataType_t typeC = CUDA_R_64F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
-    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    // cudaDataType_t typeA = CUDA_R_64F;
+    // cudaDataType_t typeB = CUDA_R_64F;
+    // cudaDataType_t typeC = CUDA_R_64F;
+    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
+    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
     // // // --- END ---
 
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
@@ -121,29 +131,30 @@ int main()
     /**************
       MATMUL
     **************/
-    std::vector<int> modeA{'i','j', 'k'};
-    std::vector<int> modeB{'k','l'};
-    std::vector<int> modeC{'i','j', 'l'};
+    std::vector<int> modeA{'i', 'j', 'k'};
+    std::vector<int> modeB{'k', 'l', 'i'};
+    std::vector<int> modeC{'j', 'l', 'i'};
     int nmodeA = modeA.size();
     int nmodeB = modeB.size();
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    const int size = 1 << 9;
-    const int i = size;
-    const int j = size;
-    const int k = size-1;
-    const int l = size;
+    const int size = 1 << 12;
+    const int i = 10;
+    const int j = size + 500;
+    const int k = size;
+    const int l = size - 500;
 
     extent['i'] = i;
     extent['j'] = j;
     extent['k'] = k;
     extent['l'] = l;
 
-    printf("Cmn = Amk * Bkn;   m = %d; n = %d; k = %d\n", i * j, l, k);
-
+    printf("BATCHES: %d with m=%d, n=%d, k=%d\n", i, j, l, k);
 
     // // computes FLOPS
+    // double tflops = (2.0 * extent['i'] * extent['j']
+                    //  * extent['k'] * extent['l']) /1e12;
     double tflops = (2.0 * extent['i'] * extent['j']
                      * extent['k'] * extent['l']) /1e12;
 
@@ -226,56 +237,60 @@ int main()
     /*************
      * Compute GEMM CUBLAS
      ************/
-    if (printDebug) printf("Run CUBLAS baseline\n");
-    floatTypeC *C_cublas;
-    CUDA_CHECK(cudaMalloc((void**) &C_cublas, sizeC));
-    CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
-
-    cudaStream_t s;
-    cublasHandle_t cublas_handle;
-    CUDA_CHECK(cudaStreamCreate(&s));
-    CUDA_CHECK(cublasCreate(&cublas_handle));
-    // CUDA_CHECK(cublasSetMathMode(cublas_handle, CUBLAS_PEDANTIC_MATH));
-
-    void* work_cublas;
-    // size_t cublas_worksize = 4*1024*1024; // 4 MiB
-    size_t cublas_worksize = 0;
-    CUDA_CHECK(cudaMalloc(&work_cublas, cublas_worksize));
-    CUDA_CHECK(cublasSetWorkspace(cublas_handle, &work_cublas, cublas_worksize));
-
     double av_time_cublas = 0.0;
     double min_time_cublas = 1e8;
-    for (int iter = 0; iter < runs; iter++) {
-        GPUTimer timer;
-        CUDA_CHECK(cublasGemmEx(
-                    cublas_handle, 
-                    CUBLAS_OP_N, CUBLAS_OP_N, 
-                    i*j, l, k, 
-                    &alpha, 
-                    A_d, typeA, i*j, 
-                    B_d, typeB, k, 
-                    &beta, 
-                    C_cublas, typeC, i*j,
-                    cublasComputeType,
-                    CUBLAS_GEMM_DEFAULT)); // warmup
-        timer.start();
-        CUDA_CHECK(cublasGemmEx(
-                    cublas_handle, 
-                    CUBLAS_OP_N, CUBLAS_OP_N, 
-                    i*j, l, k, 
-                    &alpha, 
-                    A_d, typeA, i*j, 
-                    B_d, typeB, k, 
-                    &beta, 
-                    C_cublas, typeC, i*j,
-                    cublasComputeType,
-                    CUBLAS_GEMM_DEFAULT));
-        auto time  = timer.seconds();
-        min_time_cublas = (time  < min_time_cublas) ? time : min_time_cublas;
-        av_time_cublas += time / runs;
+    cublasHandle_t cublas_handle;
+    floatTypeC *C_cublas = NULL;
+    if (cublasFlag) {
+        if (printDebug) printf("Run CUBLAS baseline\n");
+        CUDA_CHECK(cudaMalloc((void**) &C_cublas, sizeC));
+        CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
+
+        cudaStream_t s;
+        CUDA_CHECK(cudaStreamCreate(&s));
+        CUDA_CHECK(cublasCreate(&cublas_handle));
+        // CUDA_CHECK(cublasSetMathMode(cublas_handle, CUBLAS_PEDANTIC_MATH));
+
+        void* work_cublas;
+        // size_t cublas_worksize = 4*1024*1024; // 4 MiB
+        size_t cublas_worksize = 0;
+        CUDA_CHECK(cudaMalloc(&work_cublas, cublas_worksize));
+        CUDA_CHECK(cublasSetWorkspace(cublas_handle, &work_cublas, cublas_worksize));
+
+        av_time_cublas = 0.0;
+        min_time_cublas = 1e8;
+        for (int iter = 0; iter < runs; iter++) {
+            GPUTimer timer;
+            CUDA_CHECK(cublasGemmEx(
+                        cublas_handle, 
+                        CUBLAS_OP_N, CUBLAS_OP_N, 
+                        i*j, l, k, 
+                        &alpha, 
+                        A_d, typeA, i*j, 
+                        B_d, typeB, k, 
+                        &beta, 
+                        C_cublas, typeC, i*j,
+                        cublasComputeType,
+                        CUBLAS_GEMM_DEFAULT)); // warmup
+            timer.start();
+            CUDA_CHECK(cublasGemmEx(
+                        cublas_handle, 
+                        CUBLAS_OP_N, CUBLAS_OP_N, 
+                        i*j, l, k, 
+                        &alpha, 
+                        A_d, typeA, i*j, 
+                        B_d, typeB, k, 
+                        &beta, 
+                        C_cublas, typeC, i*j,
+                        cublasComputeType,
+                        CUBLAS_GEMM_DEFAULT));
+            auto time  = timer.seconds();
+            min_time_cublas = (time  < min_time_cublas) ? time : min_time_cublas;
+            av_time_cublas += time / runs;
+        }
+        printf("=== CUBLAS ===\n");
+        printf("CUBLAS: %.2f GB/s %.2f TFLOP/s\n", transferedBytes / av_time_cublas, tflops / av_time_cublas);
     }
-    printf("=== CUBLAS ===\n");
-    printf("CUBLAS: %.2f GB/s %.2f TFLOP/s\n", transferedBytes / av_time_cublas, tflops / av_time_cublas);
 
     /*************************
      * cuTENSOR
@@ -369,16 +384,11 @@ int main()
      **********************/
 
     uint64_t worksize = 0;
-    if (workMaxFlag) {
+    if (worksizePref) {
         CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
                     &desc,
                     &find,
-                    CUTENSOR_WORKSPACE_MAX, &worksize));
-    } else {
-        CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
-                    &desc,
-                    &find,
-                    CUTENSOR_WORKSPACE_RECOMMENDED, &worksize));
+                    (cutensorWorksizePreference_t) worksizePref, &worksize));
     }
     // worksize = 0;
 
@@ -464,7 +474,7 @@ int main()
         }
         if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
         {
-            if (checkRMSE) {
+            if (checkRMSE && cublasFlag) {
                 floatTypeA rmse_diff = rmse(i*j*l, C_d, C_cublas);
                 printf("RMSE = %f\t", rmse_diff);
 
@@ -491,10 +501,12 @@ int main()
     printf("\nRESULTS from %d runs:\n", runs);
     // printf("Time cuTENSOR[s]: Best: %.4f; Mean %.4f\n",
             // minTimeCUTENSOR, avTime);
-    printf("Time cuBLAS[s]: Best: %.4f; Mean %.4f\n",
-            min_time_cublas, av_time_cublas);
-    printf("Compute cuBLAS [TFLOPS/s]: Best: %.4f;  Mean %.4f\n",
-            tflops / min_time_cublas, tflops/ av_time_cublas);
+    if (cublasFlag) {
+        printf("Time cuBLAS[s]: Best: %.4f; Mean %.4f\n",
+                min_time_cublas, av_time_cublas);
+        printf("Compute cuBLAS [TFLOPS/s]: Best: %.4f;  Mean %.4f\n",
+                tflops / min_time_cublas, tflops/ av_time_cublas);
+    }
     printf("CUTENSOR best: %d algo %.2f GB/s %.2f TFLOP/s\n", bestAlgo, transferedBytes / bestTime, tflops / bestTime);
     // printf("Compute cuTENSOR [TFLOPS/s]: Best: %.4f;  Mean %.4f\n",
             // tflops / minTimeCUTENSOR, tflops/ avTime);

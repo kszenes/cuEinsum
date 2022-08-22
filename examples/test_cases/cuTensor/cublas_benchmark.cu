@@ -122,7 +122,7 @@ int main()
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    int size = 1 << 15;
+    int size = 1 << 12;
     const int i = size;
     const int j = size;
     const int k = size;

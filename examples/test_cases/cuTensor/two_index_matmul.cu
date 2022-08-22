@@ -150,7 +150,8 @@ int main()
     extent['k'] = k;
     extent['l'] = l;
 
-    printf("BATCHES: %d with m=%d, n=%d, k=%d\n", i, j, l, k);
+    printf("Cmn = Amk * Bkn;   m = %d; n = %d; k = %d\n", i * j, l, k);
+
 
     // // computes FLOPS
     // double tflops = (2.0 * extent['i'] * extent['j']
