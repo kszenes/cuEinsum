@@ -122,10 +122,10 @@ int main()
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    int size = 1 << 14;
+    int size = 1 << 15;
     const int i = size;
-    const int j = size >> 1;
-    const int k = size << 1;
+    const int j = size;
+    const int k = size;
     printf("i = %d; j = %d; k = %d\n", i, j, k);
 
     extent['i'] = i;
@@ -370,9 +370,9 @@ int main()
     CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
                  &desc,
                  &find,
-                 CUTENSOR_WORKSPACE_MAX, &worksize));
+                 CUTENSOR_WORKSPACE_RECOMMENDED, &worksize));
 
-    // worksize = 0;
+    worksize = 0;
 
     void *work = nullptr;
     if (worksize > 0)

@@ -118,18 +118,18 @@ int main()
       MATMUL
     **************/
     std::vector<int> modeA{'i','j', 'k'};
-    std::vector<int> modeB{'j','k', 'l'};
-    std::vector<int> modeC{'i','l'};
+    std::vector<int> modeB{'k','l'};
+    std::vector<int> modeC{'i','j', 'l'};
     int nmodeA = modeA.size();
     int nmodeB = modeB.size();
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
     const int size = 1 << 9;
-    const int i = size << 2;
+    const int i = size;
     const int j = size;
     const int k = size;
-    const int l = size << 3;
+    const int l = size;
 
     extent['i'] = i;
     extent['j'] = j;
@@ -230,6 +230,12 @@ int main()
     CUDA_CHECK(cublasCreate(&cublas_handle));
     // CUDA_CHECK(cublasSetMathMode(cublas_handle, CUBLAS_PEDANTIC_MATH));
 
+    void* work_cublas;
+    // size_t cublas_worksize = 4*1024*1024; // 4 MiB
+    size_t cublas_worksize = 0;
+    CUDA_CHECK(cudaMalloc(&work_cublas, cublas_worksize));
+    CUDA_CHECK(cublasSetWorkspace(cublas_handle, &work_cublas, cublas_worksize));
+
     double av_time_cublas = 0.0;
     double min_time_cublas = 1e8;
     for (int iter = 0; iter < runs; iter++) {
@@ -237,40 +243,31 @@ int main()
         CUDA_CHECK(cublasGemmEx(
                     cublas_handle, 
                     CUBLAS_OP_N, CUBLAS_OP_N, 
-                    i, l, j*k, 
+                    i*j, l, k, 
                     &alpha, 
-                    A_d, typeA, i, 
-                    B_d, typeB, j*k, 
+                    A_d, typeA, i*j, 
+                    B_d, typeB, k, 
                     &beta, 
-                    C_cublas, typeC, i,
+                    C_cublas, typeC, i*j,
                     cublasComputeType,
                     CUBLAS_GEMM_DEFAULT)); // warmup
         timer.start();
         CUDA_CHECK(cublasGemmEx(
                     cublas_handle, 
                     CUBLAS_OP_N, CUBLAS_OP_N, 
-                    i, l, j*k, 
+                    i*j, l, k, 
                     &alpha, 
-                    A_d, typeA, i, 
-                    B_d, typeB, j*k, 
+                    A_d, typeA, i*j, 
+                    B_d, typeB, k, 
                     &beta, 
-                    C_cublas, typeC, i,
+                    C_cublas, typeC, i*j,
                     cublasComputeType,
-                    CUBLAS_GEMM_DEFAULT)); // warmup
-        // CUDA_CHECK(cublasSgemm(
-        //             cublas_handle,
-        //             CUBLAS_OP_N, CUBLAS_OP_N,
-        //             i, k, j,
-        //             &alpha,
-        //             A_d, i,
-        //             B_d, j,
-        //             &beta,
-        //             C_cublas, i));
+                    CUBLAS_GEMM_DEFAULT));
         auto time  = timer.seconds();
         min_time_cublas = (time  < min_time_cublas) ? time : min_time_cublas;
         av_time_cublas += time / runs;
     }
-
+    printf("CUBLAS: %.2f GB/s %.2f TFLOP/s\n", transferedBytes / av_time_cublas, tflops / av_time_cublas);
 
     /*************************
      * cuTENSOR
