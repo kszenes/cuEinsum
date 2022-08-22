@@ -47,44 +47,48 @@ T rmse_host(const int, const int, const int, const T, const T*, const T*, const 
 
 int main()
 {
-    printf("cuTENSOR version: %zu\n", cutensorGetVersion());
-
+    // --- Parameters ---
     const int runs = 3;
+    const bool checkRMSE = true;
+    const bool workMaxFlag = true;
+    const bool printDebug = false;
+
+    if (printDebug) printf("cuTENSOR version: %zu\n", cutensorGetVersion());
 
     // --- Single precision ---
-    printf("Single precision\n");
-    typedef float floatTypeA;
-    typedef float floatTypeB;
-    typedef float floatTypeC;
-    typedef float floatTypeCompute;
+    // printf("Single precision\n");
+    // typedef float floatTypeA;
+    // typedef float floatTypeB;
+    // typedef float floatTypeC;
+    // typedef float floatTypeCompute;
 
-    cudaDataType_t typeA = CUDA_R_32F;
-    cudaDataType_t typeB = CUDA_R_32F;
-    cudaDataType_t typeC = CUDA_R_32F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
-    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+    // cudaDataType_t typeA = CUDA_R_32F;
+    // cudaDataType_t typeB = CUDA_R_32F;
+    // cudaDataType_t typeC = CUDA_R_32F;
+    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
+    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
 
     // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
     // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
 
     // --- Double precision ---
-    // printf("Double precision\n");
-    // typedef double floatTypeA;
-    // typedef double floatTypeB;
-    // typedef double floatTypeC;
-    // typedef double floatTypeCompute;
+    printf("Double precision\n");
+    typedef double floatTypeA;
+    typedef double floatTypeB;
+    typedef double floatTypeC;
+    typedef double floatTypeCompute;
 
-    // cudaDataType_t typeA = CUDA_R_64F;
-    // cudaDataType_t typeB = CUDA_R_64F;
-    // cudaDataType_t typeC = CUDA_R_64F;
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    cudaDataType_t typeA = CUDA_R_64F;
+    cudaDataType_t typeB = CUDA_R_64F;
+    cudaDataType_t typeC = CUDA_R_64F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
     // // // --- END ---
 
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
     floatTypeCompute beta  = (floatTypeCompute)0.f;
 
-    printf("Include headers and define data types\n");
+    if (printDebug) printf("Include headers and define data types\n");
 
     /**********************
      * Computing: C_{m,u,n,v} = alpha * A_{m,h,k,n} B_{u,k,v,h} + beta * C_{m,u,n,v}
@@ -128,14 +132,15 @@ int main()
     const int size = 1 << 9;
     const int i = size;
     const int j = size;
-    const int k = size;
+    const int k = size-1;
     const int l = size;
 
     extent['i'] = i;
     extent['j'] = j;
     extent['k'] = k;
     extent['l'] = l;
-    printf("i = %d; j*k = %d; l = %d\n", i, j*k, l);
+
+    printf("Cmn = Amk * Bkn;   m = %d; n = %d; k = %d\n", i * j, l, k);
 
 
     // // computes FLOPS
@@ -152,11 +157,11 @@ int main()
     for (auto mode : modeB)
         extentB.push_back(extent[mode]);
 
-    printf("Define modes and extents\n");
+    if (printDebug) printf("Define modes and extents\n");
     /**********************
      * Allocating data
      **********************/
-    printf("cuTensor handle init\n");
+    if (printDebug) printf("cuTensor handle init\n");
 
     size_t elementsA = 1;
     for (auto mode : modeA)
@@ -171,9 +176,11 @@ int main()
     size_t sizeA = sizeof(floatTypeA) * elementsA;
     size_t sizeB = sizeof(floatTypeB) * elementsB;
     size_t sizeC = sizeof(floatTypeC) * elementsC;
-    printf("Elements A: %zu\n", elementsA);
-    printf("Elements B: %zu\n", elementsB);
-    printf("Elements C: %zu\n", elementsC);
+    if (printDebug) printf("Elements A: %zu\n", elementsA);
+    if (printDebug) printf("Elements B: %zu\n", elementsB);
+    if (printDebug) printf("Elements C: %zu\n", elementsC);
+
+    printf("Size [MiB]: A = %zu ; B = %zu; C = %zu\n", sizeA/1024/1024, sizeB/1024/1024, sizeC/1024/1024);
     printf("Total memory: %.2f GiB\n", (sizeA + sizeB + sizeC)/1024./1024./1024);
 
     double transferedBytes = sizeC + sizeA + sizeB;
@@ -187,11 +194,11 @@ int main()
 
 
     floatTypeA *A = (floatTypeA*) malloc(sizeof(floatTypeA) * elementsA);
-    printf("A malloc successful\n");
+    if (printDebug) printf("A malloc successful\n");
     floatTypeB *B = (floatTypeB*) malloc(sizeof(floatTypeB) * elementsB);
-    printf("B malloc successful\n");
+    if (printDebug) printf("B malloc successful\n");
     floatTypeC *C = (floatTypeC*) malloc(sizeof(floatTypeC) * elementsC);
-    printf("C malloc successful\n");
+    if (printDebug) printf("C malloc successful\n");
 
     if (A == NULL || B == NULL || C == NULL)
     {
@@ -199,7 +206,7 @@ int main()
         return -1;
     }
 
-    printf("Allocate, initialize and transfer tensors\n");
+    if (printDebug) printf("Allocate, initialize and transfer tensors\n");
     /*******************
      * Initialize data
      *******************/
@@ -219,7 +226,7 @@ int main()
     /*************
      * Compute GEMM CUBLAS
      ************/
-    printf("Run CUBLAS baseline\n");
+    if (printDebug) printf("Run CUBLAS baseline\n");
     floatTypeC *C_cublas;
     CUDA_CHECK(cudaMalloc((void**) &C_cublas, sizeC));
     CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
@@ -267,6 +274,7 @@ int main()
         min_time_cublas = (time  < min_time_cublas) ? time : min_time_cublas;
         av_time_cublas += time / runs;
     }
+    printf("=== CUBLAS ===\n");
     printf("CUBLAS: %.2f GB/s %.2f TFLOP/s\n", transferedBytes / av_time_cublas, tflops / av_time_cublas);
 
     /*************************
@@ -303,7 +311,7 @@ int main()
                  NULL,/*stride*/
                  typeC, CUTENSOR_OP_IDENTITY));
 
-    printf("Initialize cuTENSOR and tensor descriptors\n");
+    if (printDebug) printf("Initialize cuTENSOR and tensor descriptors\n");
     /**********************************************
      * Retrieve the memory alignment for each tensor
      **********************************************/ 
@@ -326,7 +334,7 @@ int main()
                   &descC, 
                   &alignmentRequirementC));
 
-    printf("Query best alignment requirement for our pointers\n");
+    if (printDebug) printf("Query best alignment requirement for our pointers\n");
     /*******************************
      * Create Contraction Descriptor
      *******************************/
@@ -340,7 +348,7 @@ int main()
                  &descC, modeC.data(), alignmentRequirementC,
                  typeCompute));
 
-    printf("Initialize contraction descriptor\n");
+    if (printDebug) printf("Initialize contraction descriptor\n");
     /**************************
     * Set the algorithm to use
     ***************************/
@@ -355,16 +363,23 @@ int main()
                  &handle, &find, 
                  (cutensorAlgo_t) -6)); // 1 is usually best for matmul
 
-    printf("Initialize settings to find algorithm\n");
+    if (printDebug) printf("Initialize settings to find algorithm\n");
     /**********************
      * Query workspace
      **********************/
 
     uint64_t worksize = 0;
-    CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
-                 &desc,
-                 &find,
-                 CUTENSOR_WORKSPACE_RECOMMENDED, &worksize));
+    if (workMaxFlag) {
+        CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
+                    &desc,
+                    &find,
+                    CUTENSOR_WORKSPACE_MAX, &worksize));
+    } else {
+        CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
+                    &desc,
+                    &find,
+                    CUTENSOR_WORKSPACE_RECOMMENDED, &worksize));
+    }
     // worksize = 0;
 
     void *work = nullptr;
@@ -382,7 +397,7 @@ int main()
     double bestTime = 1e100;
     int bestAlgo = -1;
 
-    printf("Sizez[MiB]: A = %zu ; B = %zu; C = %zu\n", sizeA/1024/1024, sizeB/1024/1024, sizeC/1024/1024);
+    printf("=== CUTENSOR ===\n");
     printf("Query recommended workspace size (%zu MB) and allocate it\n", worksize/1024/1024);
     /**************************
      * Create Contraction Plan
@@ -395,7 +410,7 @@ int main()
                  &find,
                  worksize));
 
-    printf("Create plan for contraction\n");
+    if (printDebug) printf("Create plan for contraction\n");
     /**********************
      * Run
      **********************/
@@ -404,7 +419,7 @@ int main()
     for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < 6; algo++) {
         double minTimeCUTENSOR = 1e100;
         double avTime = 0;
-        for (int i=0; i < runs; ++i)
+        for (int iter=0; iter < runs; iter++)
         {
             CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
             CUDA_CHECK(cudaDeviceSynchronize());
@@ -449,6 +464,11 @@ int main()
         }
         if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
         {
+            if (checkRMSE) {
+                floatTypeA rmse_diff = rmse(i*j*l, C_d, C_cublas);
+                printf("RMSE = %f\t", rmse_diff);
+
+            } 
             printf("cuTensor: %d algo %.2f GB/s %.2f TFLOP/s\n", algo, transferedBytes / minTimeCUTENSOR, tflops / avTime);
         }
 
@@ -462,10 +482,10 @@ int main()
     // floatTypeA rmse_true = rmse_host(i, j*k, l, alpha, A, B, C_cublas);
     // printf("RMSE true = %f\n", rmse_true);
 
-    floatTypeA rmse_diff = rmse(j*l, C_d, C_cublas);
-    printf("RMSE diff = %f\n", rmse_diff);
+    // floatTypeA rmse_diff = rmse(i*j*l, C_d, C_cublas);
+    // printf("RMSE diff = %f\n", rmse_diff);
 
-    printf("Execute contraction from plan\n");
+    if (printDebug) printf("Execute contraction from plan\n");
     /*************************/
 
     printf("\nRESULTS from %d runs:\n", runs);
