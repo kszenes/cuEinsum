@@ -44,6 +44,9 @@
 
 int main()
 {
+    // --- Parameters ---
+    const bool allAlgos = false;
+    
     printf("cuTENSOR version: %zu\n", cutensorGetVersion());
 
     const int runs = 1;
@@ -122,7 +125,8 @@ int main()
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    int size = 1 << 12;
+    // const int size = 1 << 12;
+    const int size = 4096;
     const int i = size;
     const int j = size;
     const int k = size;
@@ -372,7 +376,7 @@ int main()
                  &find,
                  CUTENSOR_WORKSPACE_RECOMMENDED, &worksize));
 
-    worksize = 0;
+    // worksize = 0;
 
     void *work = nullptr;
     if (worksize > 0)
@@ -410,7 +414,8 @@ int main()
      **********************/
 
     cutensorStatus_t err;
-    for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < 6; algo++) {
+    const int algoToTry = allAlgos ? 6 : -5; // only try default patient
+    for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < algoToTry; algo++) {
         double minTimeCUTENSOR = 1e100;
         double avTime = 0;
         for (int i=0; i < runs; ++i)

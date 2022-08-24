@@ -1,6 +1,2 @@
-*
-
-!*.cu
-!Makefile
-!benchmarks
-!.gitignore
+*.csv
+!benchmarks/*/*.csv

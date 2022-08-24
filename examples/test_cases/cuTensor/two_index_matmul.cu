@@ -48,11 +48,13 @@ T rmse_host(const int, const int, const int, const T, const T*, const T*, const 
 int main()
 {
     // --- Parameters ---
-    const int runs = 3;
-    const bool checkRMSE = false;
-    const int worksizePref = 2; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
-    const bool printDebug = false;
-    const bool cublasFlag = true;
+    #define FLOAT                      // Datatype (FLOAT/TENSOR/DOUBLE)
+    const int runs = 1;
+    const bool allAlgos = false;        // only 1 cuTensor algo or all
+    const int worksizePref = 3;         // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
+    const bool cublasFlag = true;       // run cuBLAS benchmark
+    const bool checkRMSE = true;        // compares RMSE with cuBLAS
+    const bool printDebug = false;      // debug statements
 
     printf("Workspace preference: ");
     switch (worksizePref) {
@@ -65,7 +67,9 @@ int main()
 
     if (printDebug) printf("cuTENSOR version: %zu\n", cutensorGetVersion());
 
+
     // --- Single precision ---
+    #if defined(FLOAT)
     printf("Single precision\n");
     typedef float floatTypeA;
     typedef float floatTypeB;
@@ -75,24 +79,34 @@ int main()
     cudaDataType_t typeA = CUDA_R_32F;
     cudaDataType_t typeB = CUDA_R_32F;
     cudaDataType_t typeC = CUDA_R_32F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
+    #undef FLOAT
+    #elif defined(TENSOR)
+    printf("Tensor float precision\n");
+    typedef float floatTypeA;
+    typedef float floatTypeB;
+    typedef float floatTypeC;
+    typedef float floatTypeCompute;
+    cudaDataType_t typeA = CUDA_R_32F;
+    cudaDataType_t typeB = CUDA_R_32F;
+    cudaDataType_t typeC = CUDA_R_32F;
     cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
     cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
-
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
-
-    // --- Double precision ---
-    // printf("Double precision\n");
-    // typedef double floatTypeA;
-    // typedef double floatTypeB;
-    // typedef double floatTypeC;
-    // typedef double floatTypeCompute;
-
-    // cudaDataType_t typeA = CUDA_R_64F;
-    // cudaDataType_t typeB = CUDA_R_64F;
-    // cudaDataType_t typeC = CUDA_R_64F;
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    #undef TENSOR
+    #elif defined(DOUBLE)
+    printf("Double precision\n");
+    typedef double floatTypeA;
+    typedef double floatTypeB;
+    typedef double floatTypeC;
+    typedef double floatTypeCompute;
+    cudaDataType_t typeA = CUDA_R_64F;
+    cudaDataType_t typeB = CUDA_R_64F;
+    cudaDataType_t typeC = CUDA_R_64F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    #undef DOUBLE
+    #endif
     // // // --- END ---
 
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
@@ -131,33 +145,52 @@ int main()
     /**************
       MATMUL
     **************/
-    std::vector<int> modeA{'i', 'j', 'k'};
-    std::vector<int> modeB{'i', 'k', 'l'};
-    std::vector<int> modeC{'i', 'j', 'l'};
+    // USUAL INDEX ORDER
+    std::vector<int> modeA{'h', 'i', 'j', 'k'};
+    std::vector<int> modeB{'j', 'k', 'l', 'm'};
+    std::vector<int> modeC{'h', 'i', 'l', 'm'};
+
+    // std::vector<int> modeA{'k', 'j', 'i', 'h'};
+    // std::vector<int> modeB{'j', 'k', 'l', 'm'};
+    // std::vector<int> modeC{'h', 'i', 'l', 'm'};
     int nmodeA = modeA.size();
     int nmodeB = modeB.size();
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    const int size = 1 << 11;
-    const int i = 50;
-    const int j = size;
-    const int k = size;
-    const int l = size;
+    const size_t size = 1 << 7;
+    const size_t h = size;
+    const size_t i = size;
+    const size_t j = size;
+    const size_t k = size;
+    const size_t l = size;
+    const size_t m = size;
 
+    extent['h'] = h;
     extent['i'] = i;
     extent['j'] = j;
     extent['k'] = k;
     extent['l'] = l;
+    extent['m'] = m;
 
-    printf("Cmn = Amk * Bkn;   m = %d; n = %d; k = %d\n", i * j, l, k);
+    const size_t M = h * i;
+    const size_t N = l * m;
+    const size_t K = j * k;
+    const size_t lda = h * i;
+    const size_t ldb = k * j;
+    const size_t ldc = lda;
 
+
+    printf("Cmn = Amk * Bkn;   m = %zu; n = %zu; k = %zu\n", M, N, K);
 
     // // computes FLOPS
     // double tflops = (2.0 * extent['i'] * extent['j']
                     //  * extent['k'] * extent['l']) /1e12;
-    double tflops = (2.0 * extent['i'] * extent['j']
-                     * extent['k'] * extent['l']) /1e12;
+    double tflops = 2.0;
+    for (auto& e : extent) {
+        tflops *= e.second;
+    }
+    tflops /= 1e12;
 
     std::vector<int64_t> extentC;
     for (auto mode : modeC)
@@ -265,24 +298,24 @@ int main()
             CUDA_CHECK(cublasGemmEx(
                         cublas_handle, 
                         CUBLAS_OP_N, CUBLAS_OP_N, 
-                        i*j, l, k, 
+                        M, N, K, 
                         &alpha, 
-                        A_d, typeA, i*j, 
-                        B_d, typeB, k, 
+                        A_d, typeA, lda, 
+                        B_d, typeB, ldb, 
                         &beta, 
-                        C_cublas, typeC, i*j,
+                        C_cublas, typeC, ldc,
                         cublasComputeType,
                         CUBLAS_GEMM_DEFAULT)); // warmup
             timer.start();
             CUDA_CHECK(cublasGemmEx(
                         cublas_handle, 
                         CUBLAS_OP_N, CUBLAS_OP_N, 
-                        i*j, l, k, 
+                        M, N, K, 
                         &alpha, 
-                        A_d, typeA, i*j, 
-                        B_d, typeB, k, 
+                        A_d, typeA, lda, 
+                        B_d, typeB, ldb, 
                         &beta, 
-                        C_cublas, typeC, i*j,
+                        C_cublas, typeC, ldc,
                         cublasComputeType,
                         CUBLAS_GEMM_DEFAULT));
             auto time  = timer.seconds();
@@ -427,7 +460,8 @@ int main()
      **********************/
 
     cutensorStatus_t err;
-    for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < 6; algo++) {
+    const int algosToTry = allAlgos ? 6 : -5;
+    for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < algosToTry; algo++) {
         double minTimeCUTENSOR = 1e100;
         double avTime = 0;
         for (int iter=0; iter < runs; iter++)
@@ -476,7 +510,7 @@ int main()
         if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
         {
             if (checkRMSE && cublasFlag) {
-                floatTypeA rmse_diff = rmse(i*j*l, C_d, C_cublas);
+                floatTypeA rmse_diff = rmse(i*l, C_d, C_cublas);
                 printf("RMSE = %f\t", rmse_diff);
 
             } 

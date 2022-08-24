@@ -10,7 +10,7 @@
 
 
 template <typename T>
-T rmse(const int n, const T* dVec1, const T* dVec2)
+T rmse(const size_t n, const T* dVec1, const T* dVec2)
 {
   T* hVec1;
   T* hVec2;
@@ -21,7 +21,7 @@ T rmse(const int n, const T* dVec1, const T* dVec2)
   HANDLE_CUDA_ERROR(cudaMemcpy(hVec2, dVec2, n*sizeof(T), cudaMemcpyDeviceToHost));
 
   T rmse = 0.;
-  for (int i(0); i < n; ++i)
+  for (size_t i = 0; i < n; ++i)
   {
     T diff = hVec1[i] - hVec2[i];
     rmse += (diff*diff);

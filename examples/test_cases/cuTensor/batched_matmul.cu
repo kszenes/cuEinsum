@@ -48,11 +48,12 @@ T rmse_host(const int, const int, const int, const T, const T*, const T*, const 
 int main()
 {
     // --- Parameters ---
-    const int runs = 3;
+    const int runs = 1;
     const bool checkRMSE = false;
     const int worksizePref = 3; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
     const bool printDebug = false;
     const bool cublasFlag = true;
+    const bool allAlgos = false;
 
     printf("Workspace preference: ");
     switch (worksizePref) {
@@ -66,34 +67,34 @@ int main()
     if (printDebug) printf("cuTENSOR version: %zu\n", cutensorGetVersion());
 
     // --- Single precision ---
-    printf("Single precision\n");
-    typedef float floatTypeA;
-    typedef float floatTypeB;
-    typedef float floatTypeC;
-    typedef float floatTypeCompute;
+    // printf("Single precision\n");
+    // typedef float floatTypeA;
+    // typedef float floatTypeB;
+    // typedef float floatTypeC;
+    // typedef float floatTypeCompute;
 
-    cudaDataType_t typeA = CUDA_R_32F;
-    cudaDataType_t typeB = CUDA_R_32F;
-    cudaDataType_t typeC = CUDA_R_32F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
-    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+    // cudaDataType_t typeA = CUDA_R_32F;
+    // cudaDataType_t typeB = CUDA_R_32F;
+    // cudaDataType_t typeC = CUDA_R_32F;
+    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
+    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
 
     // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
     // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
 
     // --- Double precision ---
-    // printf("Double precision\n");
-    // typedef double floatTypeA;
-    // typedef double floatTypeB;
-    // typedef double floatTypeC;
-    // typedef double floatTypeCompute;
+    printf("Double precision\n");
+    typedef double floatTypeA;
+    typedef double floatTypeB;
+    typedef double floatTypeC;
+    typedef double floatTypeCompute;
 
-    // cudaDataType_t typeA = CUDA_R_64F;
-    // cudaDataType_t typeB = CUDA_R_64F;
-    // cudaDataType_t typeC = CUDA_R_64F;
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
-    // // // --- END ---
+    cudaDataType_t typeA = CUDA_R_64F;
+    cudaDataType_t typeB = CUDA_R_64F;
+    cudaDataType_t typeC = CUDA_R_64F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    // --- END ---
 
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
     floatTypeCompute beta  = (floatTypeCompute)0.f;
@@ -131,7 +132,7 @@ int main()
     /**************
       MATMUL
     **************/
-    std::vector<int> modeA{'i', 'j', 'k'};
+    std::vector<int> modeA{'j', 'k', 'i'};
     std::vector<int> modeB{'k', 'l', 'i'};
     std::vector<int> modeC{'j', 'l', 'i'};
     int nmodeA = modeA.size();
@@ -141,9 +142,9 @@ int main()
     std::unordered_map<int, int64_t> extent;
     const int size = 1 << 12;
     const int i = 10;
-    const int j = size + 500;
+    const int j = size;
     const int k = size;
-    const int l = size - 500;
+    const int l = size;
 
     extent['i'] = i;
     extent['j'] = j;
@@ -426,7 +427,8 @@ int main()
      **********************/
 
     cutensorStatus_t err;
-    for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < 6; algo++) {
+    const int algoToTry = allAlgos ? 6 : -5; // only try default patient
+    for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < algoToTry; algo++) {
         double minTimeCUTENSOR = 1e100;
         double avTime = 0;
         for (int iter=0; iter < runs; iter++)

@@ -1,10 +1,15 @@
-CXX_FLAGS=-std=c++11 -O3 -I${CUTENSOR_ROOT}/include -I../../include \
+# DTYPE_FLAG=TENSOR
+CXX_FLAGS=-std=c++11 -O3 -I${CUTENSOR_ROOT}/include -I../../../include \
 						 -L${CUTENSOR_ROOT}/lib/11 -lcutensor -lcudart -lcublas -lcublasLt \
 						 --compiler-options "-Wall -Wextra" \
 						 -gencode=arch=compute_86,code=sm_86 \
 						 -gencode=arch=compute_80,code=sm_80 \
 						 -gencode=arch=compute_70,code=sm_70 \
 						 -use_fast_math -lineinfo
+						 # -D$(DTYPE_FLAG)
+
+
+
 
 all: contraction gemm_cublas cublas_single_algo cublas_benchmark lt_benchmark two_index_matmul batched_matmul
 
