@@ -48,6 +48,7 @@ T rmse_host(const int, const int, const int, const T, const T*, const T*, const 
 int main()
 {
     // --- Parameters ---
+    #define FLOAT
     const int runs = 1;
     const bool checkRMSE = false;
     const int worksizePref = 3; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
@@ -66,23 +67,32 @@ int main()
 
     if (printDebug) printf("cuTENSOR version: %zu\n", cutensorGetVersion());
 
-    // --- Single precision ---
-    // printf("Single precision\n");
-    // typedef float floatTypeA;
-    // typedef float floatTypeB;
-    // typedef float floatTypeC;
-    // typedef float floatTypeCompute;
+    #if defined(FLOAT)
+    printf("Single precision\n");
+    typedef float floatTypeA;
+    typedef float floatTypeB;
+    typedef float floatTypeC;
+    typedef float floatTypeCompute;
 
-    // cudaDataType_t typeA = CUDA_R_32F;
-    // cudaDataType_t typeB = CUDA_R_32F;
-    // cudaDataType_t typeC = CUDA_R_32F;
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
-
-    // cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
-
-    // --- Double precision ---
+    cudaDataType_t typeA = CUDA_R_32F;
+    cudaDataType_t typeB = CUDA_R_32F;
+    cudaDataType_t typeC = CUDA_R_32F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+    #undef TENSOR
+    #elif defined(TENSOR)
+    printf("Tensor float precision\n");
+    typedef float floatTypeA;
+    typedef float floatTypeB;
+    typedef float floatTypeC;
+    typedef float floatTypeCompute;
+    cudaDataType_t typeA = CUDA_R_32F;
+    cudaDataType_t typeB = CUDA_R_32F;
+    cudaDataType_t typeC = CUDA_R_32F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
+    #undef TENSOR
+    #elif defined(DOUBLE)
     printf("Double precision\n");
     typedef double floatTypeA;
     typedef double floatTypeB;
@@ -94,6 +104,11 @@ int main()
     cudaDataType_t typeC = CUDA_R_64F;
     cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
     cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    #undef DOUBLE
+    #endif
+
+
+    // --- Double precision ---
     // --- END ---
 
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
@@ -140,7 +155,7 @@ int main()
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    const int size = 1 << 12;
+    const int size = 1 << 11;
     const int i = 10;
     const int j = size;
     const int k = size;
