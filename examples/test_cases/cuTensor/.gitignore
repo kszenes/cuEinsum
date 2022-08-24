@@ -1,2 +1,3 @@
 *.csv
 !benchmarks/*/*.csv
+profiles
