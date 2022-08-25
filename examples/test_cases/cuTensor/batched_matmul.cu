@@ -48,9 +48,9 @@ T rmse_host(const int, const int, const int, const T, const T*, const T*, const 
 int main()
 {
     // --- Parameters ---
-    #define FLOAT
+    #define TENSOR
     const int runs = 1;
-    const bool checkRMSE = false;
+    const bool checkRMSE = true;
     const int worksizePref = 3; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
     const bool printDebug = false;
     const bool cublasFlag = true;
@@ -77,8 +77,8 @@ int main()
     cudaDataType_t typeA = CUDA_R_32F;
     cudaDataType_t typeB = CUDA_R_32F;
     cudaDataType_t typeC = CUDA_R_32F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
-    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
     #undef TENSOR
     #elif defined(TENSOR)
     printf("Tensor float precision\n");
@@ -89,8 +89,8 @@ int main()
     cudaDataType_t typeA = CUDA_R_32F;
     cudaDataType_t typeB = CUDA_R_32F;
     cudaDataType_t typeC = CUDA_R_32F;
-    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
-    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
+    cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
     #undef TENSOR
     #elif defined(DOUBLE)
     printf("Double precision\n");
@@ -108,41 +108,10 @@ int main()
     #endif
 
 
-    // --- Double precision ---
-    // --- END ---
-
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
     floatTypeCompute beta  = (floatTypeCompute)0.f;
 
     if (printDebug) printf("Include headers and define data types\n");
-
-    /**********************
-     * Computing: C_{m,u,n,v} = alpha * A_{m,h,k,n} B_{u,k,v,h} + beta * C_{m,u,n,v}
-     **********************/
-
-    // std::vector<int> modeC{'m','u','n','v'};
-    // std::vector<int> modeA{'m','h','k','n'};
-    // std::vector<int> modeB{'u','k','v','h'};
-    // int nmodeA = modeA.size();
-    // int nmodeB = modeB.size();
-    // int nmodeC = modeC.size();
-
-    // std::unordered_map<int, int64_t> extent;
-    // extent['m'] = 96;
-    // extent['n'] = 96;
-    // extent['u'] = 96;
-    // extent['v'] = 64;
-    // extent['h'] = 64;
-    // extent['k'] = 64;
-
-    // extent['m'] = 255;
-    // extent['n'] = 127;
-    // extent['u'] = 129;
-    // extent['v'] = 65;
-    // extent['h'] = 62;
-    // extent['k'] = 63;
-
-    // double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['k'] * extent['h']) /1e12;
 
     /**************
       MATMUL
@@ -155,7 +124,7 @@ int main()
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    const int size = 1 << 11;
+    const int size = 1 << 12;
     const int i = 10;
     const int j = size;
     const int k = size;
@@ -277,27 +246,29 @@ int main()
         min_time_cublas = 1e8;
         for (int iter = 0; iter < runs; iter++) {
             GPUTimer timer;
-            CUDA_CHECK(cublasGemmEx(
+            CUDA_CHECK(cublasGemmStridedBatchedEx(
                         cublas_handle, 
                         CUBLAS_OP_N, CUBLAS_OP_N, 
-                        i*j, l, k, 
+                        j, l, k, 
                         &alpha, 
-                        A_d, typeA, i*j, 
-                        B_d, typeB, k, 
+                        A_d, typeA, j, j*k,
+                        B_d, typeB, k, k*l,
                         &beta, 
-                        C_cublas, typeC, i*j,
+                        C_cublas, typeC, j, j*l,
+                        i,
                         cublasComputeType,
                         CUBLAS_GEMM_DEFAULT)); // warmup
             timer.start();
-            CUDA_CHECK(cublasGemmEx(
+            CUDA_CHECK(cublasGemmStridedBatchedEx(
                         cublas_handle, 
                         CUBLAS_OP_N, CUBLAS_OP_N, 
-                        i*j, l, k, 
+                        j, l, k, 
                         &alpha, 
-                        A_d, typeA, i*j, 
-                        B_d, typeB, k, 
+                        A_d, typeA, j, j*k,
+                        B_d, typeB, k, k*l,
                         &beta, 
-                        C_cublas, typeC, i*j,
+                        C_cublas, typeC, j, j*l,
+                        i,
                         cublasComputeType,
                         CUBLAS_GEMM_DEFAULT));
             auto time  = timer.seconds();
