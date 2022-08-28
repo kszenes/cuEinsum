@@ -39,31 +39,45 @@
 #include <cublas_v2.h>
 #include "utils.h"
 #include "timer.h"
+#include "rmse.h"
+#include <string>
+#include <iostream>
+#include <tuple>
+#include <omp.h>
+
+int findCommonIndices(std::string&, std::string&);
 
 
 int main()
 {
+    // --- Parameters ---
     #define TENSOR
     const int runs = 1;
-    const int worksizePref = 3; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
+    const int worksizePref = 4; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
     const bool printDebug = false;
     const bool allAlgos = false;
-    // const bool cublasFlag = true;
-    // const bool checkRMSE = false;
+    const bool cublasFlag = false;
+    const bool checkRMSE = true;
 
-    printf("Workspace preference: ");
+    std::string A_string = "abcd";
+    std::string B_string = "fdage";
+    std::string C_string = "bcfge";
+    const size_t size = 1 << 5;
+
+    printf("Workspace size:\t\t");
     switch (worksizePref) {
         case 0: printf("0 [MB]\n"); break;
         case 1: printf("MIN\n"); break;
         case 2: printf("RECOMMENDED\n"); break;
         case 3: printf("MAX\n"); break;
+        case 4: printf("ALL\n"); break;
         default: printf("Unsupported worksizePref: %d", worksizePref); exit(-1);
     }
 
     if (printDebug) printf("cuTENSOR version: %zu\n", cutensorGetVersion());
 
     #if defined(FLOAT)
-    printf("Single precision\n");
+    printf("Precision:\t\tF32\n");
     typedef float floatTypeA;
     typedef float floatTypeB;
     typedef float floatTypeC;
@@ -73,10 +87,10 @@ int main()
     cudaDataType_t typeB = CUDA_R_32F;
     cudaDataType_t typeC = CUDA_R_32F;
     cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_32F;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F;
     #undef TENSOR
     #elif defined(TENSOR)
-    printf("Tensor float precision\n");
+    printf("Precision:\t\tTF32\n");
     typedef float floatTypeA;
     typedef float floatTypeB;
     typedef float floatTypeC;
@@ -85,10 +99,10 @@ int main()
     cudaDataType_t typeB = CUDA_R_32F;
     cudaDataType_t typeC = CUDA_R_32F;
     cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_TF32;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_32F_FAST_TF32;
     #undef TENSOR
     #elif defined(DOUBLE)
-    printf("Double precision\n");
+    printf("Precision:\t\tF64\n");
     typedef double floatTypeA;
     typedef double floatTypeB;
     typedef double floatTypeC;
@@ -98,7 +112,7 @@ int main()
     cudaDataType_t typeB = CUDA_R_64F;
     cudaDataType_t typeC = CUDA_R_64F;
     cutensorComputeType_t typeCompute = CUTENSOR_COMPUTE_64F;
-    // cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
+    cublasComputeType_t cublasComputeType = CUBLAS_COMPUTE_64F;
     #undef DOUBLE
     #endif
 
@@ -111,63 +125,69 @@ int main()
      * Computing: C_{m,u,n,v} = alpha * A_{m,h,k,n} B_{u,k,v,h} + beta * C_{m,u,n,v}
      **********************/
 
-    std::vector<int> modeC{'m','u','n','v'};
-    std::vector<int> modeA{'m','h','k','n'};
-    std::vector<int> modeB{'u','k','v','h'};
+    // std::vector<int> modeC{'m','u','n','v'};
+    // std::vector<int> modeA{'m','h','k','n'};
+    // std::vector<int> modeB{'u','k','v','h'};
+    // int nmodeA = modeA.size();
+    // int nmodeB = modeB.size();
+    // int nmodeC = modeC.size();
+
+    // std::unordered_map<int, int64_t> extent;
+    // extent['m'] = 96;
+    // extent['n'] = 96;
+    // extent['u'] = 96;
+    // extent['v'] = 64;
+    // extent['h'] = 64;
+    // extent['k'] = 64;
+
+    // double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['h'] * extent['k']) /1e12;
+
+    /**************
+      MATMUL
+    **************/
+
+    std::cout << "Contraction:\t\t" << A_string << ',' << B_string << "->" << C_string << '\n';
+
+    const int contractedIndices = findCommonIndices(A_string, B_string);
+    const size_t M = std::pow(size, A_string.length() - contractedIndices);
+    const size_t K = std::pow(size, contractedIndices);
+    const size_t N = std::pow(size, C_string.length() - (A_string.length() - contractedIndices));
+
+    std::cout << "Num Indices:\t\tM: " << A_string.length() - contractedIndices << "; N: " << C_string.length() - (A_string.length() - contractedIndices) << "; K: " << contractedIndices << '\n';
+
+    std::vector<int> modeA;
+    std::vector<int> modeB;
+    std::vector<int> modeC;
+    for (char c : A_string) {
+        modeA.push_back(c);
+    }
+    for (char c : B_string) {
+        modeB.push_back(c);
+    }
+    for (char c : C_string) {
+        modeC.push_back(c);
+    }
     int nmodeA = modeA.size();
     int nmodeB = modeB.size();
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    extent['m'] = 96;
-    extent['n'] = 96;
-    extent['u'] = 2 * 96;
-    extent['v'] = 64;
-    extent['h'] = 4 * 64;
-    extent['k'] = 64;
+    for (char c : A_string) {
+        extent[c] = size;
+    }
+    for (char c : B_string) {
+        extent[c] = size;
+    }
+    for (char c : C_string) {
+        extent[c] = size;
+    }
+    // const int n = size;
+    // const int o = size;
+    // const int p = size;
 
-    // double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['h'] * extent['k']) /1e12;
-
-    /******************
-       ijn, jmk -> inkm
-    ******************/
-
-    // std::vector<int> modeC{'i','j',,'n'};
-    // std::vector<int> modeA{'j','m','k'};
-    // std::vector<int> modeB{'i','n','k','m'};
-    // int nmodeA = modeA.size();
-    // int nmodeB = modeB.size();
-    // int nmodeC = modeC.size();
-
-    // std::unordered_map<int, int64_t> extent;
-    // extent['i'] = 255;
-    // extent['j'] = 127;
-    // extent['k'] = 129;
-    // extent['n'] = 65;
-    // extent['m'] = 62;
-    // extent['l'] = 63;
-
-    // double tflops = (2.0 * extent['i'] * extent['j'] * extent['k'] * extent['n'] * extent['m'], extent['l']) /1e12;
-
-    /**************
-      MATMUL
-    **************/
-    // std::vector<int> modeA{'i','j'};
-    // std::vector<int> modeB{'j','k'};
-    // std::vector<int> modeC{'i','k'};
-    // int nmodeA = modeA.size();
-    // int nmodeB = modeB.size();
-    // int nmodeC = modeC.size();
-
-    // std::unordered_map<int, int64_t> extent;
-    // const int size = 1 << 14;
-    // const int i = size;
-    // const int j = size;
-    // const int k = size;
-
-    // extent['i'] = i;
-    // extent['j'] = j;
-    // extent['k'] = k;
+    // extent['n'] = n;
+    // extent['o'] = o;
+    // extent['p'] = p;
 
     // computes FLOPS
     double tflops = 2.0;
@@ -209,11 +229,13 @@ int main()
     if (printDebug) printf("Elements B: %zu\n", elementsB);
     if (printDebug) printf("Elements C: %zu\n", elementsC);
 
-    printf("Size [MiB]: A = %zu ; B = %zu; C = %zu\n", sizeA/1024/1024, sizeB/1024/1024, sizeC/1024/1024);
-    printf("Total memory: %.2f GiB\n", (sizeA + sizeB + sizeC)/1024./1024./1024);
+    printf("Size [MiB]:\t\tA = %zu ; B = %zu; C = %zu\n", sizeA/1024/1024, sizeB/1024/1024, sizeC/1024/1024);
+    printf("Total memory:\t\t%.2f GiB\n", (sizeA + sizeB + sizeC)/1024./1024./1024);
     double transferedBytes = sizeC + sizeA + sizeB;
     transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
     transferedBytes /= 1e9;
+    if (printDebug) printf("TFLOPS: %f;\nBytes: %f\n", tflops * 1e12, transferedBytes * 1e9);
+    printf("Arithmetic Intensity:\t%.2f FLOP/Byte\n", tflops * 1e3 / transferedBytes);
 
     floatTypeA *A_d, *B_d, *C_d;
     CUDA_CHECK(cudaMalloc((void**) &A_d, sizeA));
@@ -246,10 +268,69 @@ int main()
     for (size_t i = 0; i < elementsC; i++)
         C[i] = (((floatTypeC) rand())/RAND_MAX - 0.5)*100;
 
+    printf("init Done");
+
     CUDA_CHECK(cudaMemcpy(A_d, A, sizeA, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(B_d, B, sizeB, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
 
+    /*************
+     * Compute GEMM CUBLAS
+     ************/
+    double av_time_cublas = 0.0;
+    double min_time_cublas = 1e8;
+    cublasHandle_t cublas_handle;
+    floatTypeC *C_cublas = NULL;
+    if (cublasFlag) {
+        if (printDebug) printf("Run CUBLAS baseline\n");
+        CUDA_CHECK(cudaMalloc((void**) &C_cublas, sizeC));
+        CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
+
+        cudaStream_t s;
+        CUDA_CHECK(cudaStreamCreate(&s));
+        CUDA_CHECK(cublasCreate(&cublas_handle));
+        // CUDA_CHECK(cublasSetMathMode(cublas_handle, CUBLAS_PEDANTIC_MATH));
+
+        void* work_cublas;
+        // size_t cublas_worksize = 4*1024*1024; // 4 MiB
+        size_t cublas_worksize = 0;
+        CUDA_CHECK(cudaMalloc(&work_cublas, cublas_worksize));
+        CUDA_CHECK(cublasSetWorkspace(cublas_handle, &work_cublas, cublas_worksize));
+
+        av_time_cublas = 0.0;
+        min_time_cublas = 1e8;
+        for (int iter = 0; iter < runs; iter++) {
+            GPUTimer timer;
+            CUDA_CHECK(cublasGemmEx(
+                        cublas_handle, 
+                        CUBLAS_OP_N, CUBLAS_OP_N, 
+                        M, N, K, 
+                        &alpha, 
+                        A_d, typeA, M,
+                        B_d, typeB, K,
+                        &beta, 
+                        C_cublas, typeC, M,
+                        cublasComputeType,
+                        CUBLAS_GEMM_DEFAULT)); // warmup
+            timer.start();
+            CUDA_CHECK(cublasGemmEx(
+                        cublas_handle, 
+                        CUBLAS_OP_N, CUBLAS_OP_N, 
+                        M, N, K, 
+                        &alpha, 
+                        A_d, typeA, M,
+                        B_d, typeB, K,
+                        &beta, 
+                        C_cublas, typeC, M,
+                        cublasComputeType,
+                        CUBLAS_GEMM_DEFAULT)); // warmup
+            auto time  = timer.seconds();
+            min_time_cublas = (time  < min_time_cublas) ? time : min_time_cublas;
+            av_time_cublas += time / runs;
+        }
+        printf("=== CUBLAS ===\n");
+        printf("CUBLAS: %.2f GB/s %.2f TFLOP/s\n", transferedBytes / av_time_cublas, tflops / av_time_cublas);
+    }
 
 
     /*************************
@@ -345,10 +426,17 @@ int main()
 
     uint64_t worksize = 0;
     if (worksizePref) {
-        CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
-                    &desc,
-                    &find,
-                    (cutensorWorksizePreference_t) worksizePref, &worksize));
+        if (worksizePref == 4) {
+            CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
+                        &desc,
+                        &find,
+                        (cutensorWorksizePreference_t) CUTENSOR_WORKSPACE_MAX, &worksize));
+        } else {
+            CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
+                        &desc,
+                        &find,
+                        (cutensorWorksizePreference_t) worksizePref, &worksize));
+        }
     }
     void *work = nullptr;
     if (worksize > 0)
@@ -386,66 +474,140 @@ int main()
     cutensorStatus_t err;
     const int algoToTry = allAlgos ? 6 : -5; // only try default patient
     for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < algoToTry; algo++) {
-        double minTimeCUTENSOR = 1e100;
-        double avTime = 0;
-        for (int iter=0; iter < runs; iter++)
-        {
-            CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
-            CUDA_CHECK(cudaDeviceSynchronize());
+        printf("Algo: %d\n", algo);
+        if (worksizePref == 4) {
+            for (int worksize_iter = 1; worksize_iter <= (int) CUTENSOR_WORKSPACE_MAX; worksize_iter++) {
+                double minTimeCUTENSOR = 1e100;
+                double avTime = 0;
+                CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
+                            &desc,
+                            &find,
+                            (cutensorWorksizePreference_t) worksize_iter, &worksize));
+                for (int iter=0; iter < runs; iter++)
+                {
+                    CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
+                    CUDA_CHECK(cudaDeviceSynchronize());
 
-            cutensorContractionFind_t find;
-            err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
+                    cutensorContractionFind_t find;
+                    err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
 
-            if (err == CUTENSOR_STATUS_SUCCESS) {
-                cutensorContractionPlan_t plan;
-                err = cutensorInitContractionPlan(&handle,
-                                                  &plan,
-                                                  &desc,
-                                                  &find,
-                                                  worksize);
-                // Set up timing
-                if (err == CUTENSOR_STATUS_SUCCESS) {
-                    // Set up timing
-                    GPUTimer timer;
-                    err = cutensorContraction(&handle,
-                                            &plan,
-                                            (void*) &alpha, A_d, B_d,
-                                            (void*) &beta,  C_d, C_d, 
-                                            work, worksize, 0 /* stream */);
-                    timer.start();
+                    if (err == CUTENSOR_STATUS_SUCCESS) {
+                        cutensorContractionPlan_t plan;
+                        err = cutensorInitContractionPlan(&handle,
+                                                        &plan,
+                                                        &desc,
+                                                        &find,
+                                                        worksize);
+                        // Set up timing
+                        if (err == CUTENSOR_STATUS_SUCCESS) {
+                            // Set up timing
+                            GPUTimer timer;
+                            err = cutensorContraction(&handle,
+                                                    &plan,
+                                                    (void*) &alpha, A_d, B_d,
+                                                    (void*) &beta,  C_d, C_d, 
+                                                    work, worksize, 0 /* stream */);
+                            timer.start();
 
-                    err = cutensorContraction(&handle,
-                                            &plan,
-                                            (void*) &alpha, A_d, B_d,
-                                            (void*) &beta,  C_d, C_d, 
-                                            work, worksize, 0 /* stream */);
+                            err = cutensorContraction(&handle,
+                                                    &plan,
+                                                    (void*) &alpha, A_d, B_d,
+                                                    (void*) &beta,  C_d, C_d, 
+                                                    work, worksize, 0 /* stream */);
 
-                    // Synchronize and measure timing
-                    auto time = timer.seconds();
+                            // Synchronize and measure timing
+                            auto time = timer.seconds();
 
-                    if (err != CUTENSOR_STATUS_SUCCESS)
-                    {
-                        printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+                            if (err != CUTENSOR_STATUS_SUCCESS)
+                            {
+                                printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+                            }
+                            avTime += time / runs;
+                            minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
+                        }
                     }
-                    avTime += time / runs;
-                    minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
+                }
+                if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
+                {
+                    if (checkRMSE && cublasFlag) {
+                        floatTypeA rmse_diff = rmse(M*N, C_d, C_cublas);
+                        printf("RMSE = %f\t", rmse_diff);
+                    } 
+
+                    printf("  Worksize: %zu MB\t\t%.2f GB/s %.2f TFLOP/s\n", worksize/1024/1024, transferedBytes / avTime, tflops / avTime);
+                }
+
+                if (bestTime > minTimeCUTENSOR)
+                {
+                    bestTime = minTimeCUTENSOR;
+                    bestAlgo = algo;
+                }
+
+
+            }
+        } else {
+            double minTimeCUTENSOR = 1e100;
+            double avTime = 0;
+            for (int iter=0; iter < runs; iter++)
+            {
+                CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
+                CUDA_CHECK(cudaDeviceSynchronize());
+
+                cutensorContractionFind_t find;
+                err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
+
+                if (err == CUTENSOR_STATUS_SUCCESS) {
+                    cutensorContractionPlan_t plan;
+                    err = cutensorInitContractionPlan(&handle,
+                                                    &plan,
+                                                    &desc,
+                                                    &find,
+                                                    worksize);
+                    // Set up timing
+                    if (err == CUTENSOR_STATUS_SUCCESS) {
+                        // Set up timing
+                        GPUTimer timer;
+                        err = cutensorContraction(&handle,
+                                                &plan,
+                                                (void*) &alpha, A_d, B_d,
+                                                (void*) &beta,  C_d, C_d, 
+                                                work, worksize, 0 /* stream */);
+                        timer.start();
+
+                        err = cutensorContraction(&handle,
+                                                &plan,
+                                                (void*) &alpha, A_d, B_d,
+                                                (void*) &beta,  C_d, C_d, 
+                                                work, worksize, 0 /* stream */);
+
+                        // Synchronize and measure timing
+                        auto time = timer.seconds();
+
+                        if (err != CUTENSOR_STATUS_SUCCESS)
+                        {
+                            printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+                        }
+                        avTime += time / runs;
+                        minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
+                    }
                 }
             }
-        }
-        if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
-        {
-            // if (checkRMSE && cublasFlag) {
-            //     floatTypeA rmse_diff = rmse(i*j*l, C_d, C_cublas);
-            //     printf("RMSE = %f\t", rmse_diff);
+            if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
+            {
+                if (checkRMSE && cublasFlag) {
+                    floatTypeA rmse_diff = rmse(M*N, C_d, C_cublas);
+                    printf("RMSE = %f\t", rmse_diff);
+                } 
 
-            // } 
-            printf("cuTensor: %d algo %.2f GB/s %.2f TFLOP/s\n", algo, transferedBytes / minTimeCUTENSOR, tflops / avTime);
-        }
+                printf("cuTensor: %d algo %.2f GB/s %.2f TFLOP/s\n", algo, transferedBytes / avTime, tflops / avTime);
+            }
 
-        if (bestTime > minTimeCUTENSOR)
-        {
-            bestTime = minTimeCUTENSOR;
-            bestAlgo = algo;
+            if (bestTime > minTimeCUTENSOR)
+            {
+                bestTime = minTimeCUTENSOR;
+                bestAlgo = algo;
+            }
+
         }
 
     }
@@ -457,7 +619,13 @@ int main()
     /*************************/
 
     printf("\nRESULTS from %d runs:\n", runs);
-    printf("CUTENSOR best: %d algo %.2f GB/s %.2f TFLOP/s\n", bestAlgo, transferedBytes / bestTime, tflops / bestTime);
+    if (cublasFlag) {
+        printf("Time cuBLAS[s]: Best: %.4f; Mean %.4f\n",
+                min_time_cublas, av_time_cublas);
+        printf("CUBLAS:\t\t%.2f GB/s;  %.2f TFLOP/s\n",
+                transferedBytes / av_time_cublas, tflops/ av_time_cublas);
+    }
+    printf("CUTENSOR:\t%.2f GB/s;  %.2f TFLOP/s\t(algo %d)\n", transferedBytes / bestTime, tflops / bestTime, bestAlgo);
 
     if (A) free(A);
     if (B) free(B);
@@ -466,6 +634,19 @@ int main()
     if (B_d) cudaFree(B_d);
     if (C_d) cudaFree(C_d);
     if (work) cudaFree(work);
+    if (C_cublas) cudaFree(C_cublas);
 
     return 0;
+}
+
+int findCommonIndices(std::string& A_string, std::string& C_string) {
+    int M = 0;
+    for (size_t i = 0; i < A_string.length(); i++) {
+        for (size_t j = 0; j < C_string.length(); j++) {
+            if (A_string[i] == C_string[j]) {
+                M++;
+            }
+        }
+    }
+    return M;
 }

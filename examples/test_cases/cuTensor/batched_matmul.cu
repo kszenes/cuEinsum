@@ -51,7 +51,7 @@ int main()
     #define TENSOR
     const int runs = 1;
     const bool checkRMSE = true;
-    const int worksizePref = 3; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
+    const int worksizePref = 2; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
     const bool printDebug = false;
     const bool cublasFlag = true;
     const bool allAlgos = false;

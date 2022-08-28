@@ -132,14 +132,14 @@ int main(int argc, char** argv)
     printf("done.\n");
     
     std::unordered_map<int32_t, int64_t> extent;
-    extent['i'] = 4096;
-    extent['j'] = 4096;
-    extent['k'] = 4096;
+    extent['i'] = 4096*8;
+    extent['j'] = 4096*8;
+    extent['k'] = 4096*8;
 
     std::unordered_map<int32_t, int64_t> blocksize;
-    blocksize['i'] = 2048;
-    blocksize['j'] = 2048;
-    blocksize['k'] = 2048;
+    blocksize['i'] = 2048*8;
+    blocksize['j'] = 2048*8;
+    blocksize['k'] = 2048*8;
 
     std::unordered_map<int32_t, int32_t> deviceCount;
     deviceCount['i'] = 2;
@@ -150,11 +150,26 @@ int main(int argc, char** argv)
     std::vector<int32_t> modesB {'k', 'j'};
     std::vector<int32_t> modesC {'i', 'j'};
 
+    #define DOUBLE
+
+    #if defined(DOUBLE)
     cudaDataType_t kDataType = CUDA_R_64F;
     const cutensorComputeType_t kComputeType = CUTENSOR_COMPUTE_64F;
     const int64_t kElementSize = 8;
+    #undef DOUBLE
+    #elif defined(FLOAT)
+    cudaDataType_t kDataType = CUDA_R_32F;
+    const cutensorComputeType_t kComputeType = CUTENSOR_COMPUTE_32F;
+    const int64_t kElementSize = 4;
+    #undef FLOAT
+    #elif defined(TENSOR)
+    cudaDataType_t kDataType = CUDA_R_32F;
+    const cutensorComputeType_t kComputeType = CUTENSOR_COMPUTE_TF32;
+    const int64_t kElementSize = 4;
+    #undef TENSOR
+    #endif
 
-    const double total_bytes = 3. * 4096. * 4096. * kElementSize / 1024. / 1024. / 1024.;
+    const double total_bytes = 3. * 8. * 4096. * 8. * 4096. * kElementSize / 1024. / 1024. / 1024.;
 
     printf("Total Memory: %f GB\n", total_bytes);
 
@@ -206,7 +221,7 @@ int main(int argc, char** argv)
     printf("Querying workspace size (per GPU) ... ");
 
     const cutensorWorksizePreference_t kWorksizePreference = 
-        CUTENSOR_WORKSPACE_RECOMMENDED;
+        CUTENSOR_WORKSPACE_MAX;
 
     cutensorMgContractionDescriptor_t contractionDesc;
     CHECK(cutensorMgCreateContractionDescriptor(handle, &contractionDesc,
@@ -226,6 +241,12 @@ int main(int argc, char** argv)
         contractionDesc, contractionFind, kWorksizePreference, workspaceSize.data(), &workspaceHostSize));
 
     printf("done.\n");
+    printf("Workspace size [GB]:\n\t");
+    for (auto &e : workspaceSize) {
+        printf("%zu; ",e/1024/1024/1024);
+        
+    }
+    printf("\nHost [GB]:\n\t%zu\n", workspaceHostSize/1024/1024/1024);
 
     printf("Initializing contraction plan ... \n");
  
@@ -305,9 +326,14 @@ int main(int argc, char** argv)
     CHECK(cudaGetDevice(&currentDeviceId));
 
     float minElapsed = 0;
-    const int nRep = 3; // for stable timings
+    const int nRep = 1; // for stable timings
     for (int rep = 0; rep < nRep; rep++)
     {
+        CHECK(cutensorMgContraction(handle, plan, &kAlpha,
+            const_cast<const void**>(memoryA.data()),
+            const_cast<const void**>(memoryB.data()), &kBeta, 
+            const_cast<const void**>(memoryC.data()), memoryC.data(),
+            workspace.data(), workspaceHost, streams.data()));
         const auto start = std::chrono::steady_clock::now();
         CHECK(cutensorMgContraction(handle, plan, &kAlpha,
             const_cast<const void**>(memoryA.data()),
