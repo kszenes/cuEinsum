@@ -1,0 +1,3 @@
+size,cuBLAS,single,double,triple,quadruple
+24576,1.53,2.51,1.34,1.03,1.07
+32768,3.62,5.16,2.69,1.79,1.90
