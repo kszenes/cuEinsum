@@ -1,0 +1,6 @@
+problem dtype size[GB] custom[GB/s] cuBLAS[GB/s] cuTensor[GB/s]
+i,j->ij f64 17.18 781.3 796.6 506.5
+i,j->ij f32 8.59 690.4 734.4 169.3
+ik,jk,->ijk f64 17.20 703.6 662.0 397.7
+ik,jk,->ijk f32 8.60 608.2 561.6 191.2
+
