@@ -11,7 +11,7 @@ CXX_FLAGS=-std=c++11 -O3 -I${CUTENSOR_ROOT}/include -I../../../include \
 
 
 
-all: contraction gemm_cublas cublas_single_algo cublas_benchmark lt_benchmark two_index_matmul batched_matmul
+all: contraction gemm_cublas cublas_single_algo cublas_benchmark lt_benchmark two_index_matmul batched_matmul mttkrp einsum
 
 contraction: contraction.cu
 	nvcc contraction.cu -o  contraction ${CXX_FLAGS}
@@ -34,8 +34,14 @@ gemm_cublas: gemm_cublas.cu
 two_index_matmul: two_index_matmul.cu
 	nvcc two_index_matmul.cu -o  two_index_matmul ${CXX_FLAGS}
 
+mttkrp: mttkrp.cu
+	nvcc mttkrp.cu -o  mttkpr ${CXX_FLAGS}
+
+einsum: einsum.cu
+	nvcc einsum.cu -o  einsum ${CXX_FLAGS}
+
 clean:
-	rm -f contraction gemm_cublas cublas_single_algo cublas_benchmark lt_benchmark two_index_matmul batched_matmul
+	rm -f contraction gemm_cublas cublas_single_algo cublas_benchmark lt_benchmark two_index_matmul batched_matmul mttkrp einsum
 
 nsys_profile:
 	nsys profile -t cuda,cublas,nvtx --stats=true --cuda-memory-usage=true --gpu-metrics-device=all ./contraction
