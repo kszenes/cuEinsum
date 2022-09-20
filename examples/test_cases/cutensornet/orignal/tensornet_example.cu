@@ -81,7 +81,7 @@ int main()
    printf("GPU-minor:%d\n", prop.minor);
    printf("========================\n");
 
-   #define DOUBLE
+   #define TENSOR
 
    #if defined(FLOAT)
    typedef float floatType;
@@ -120,38 +120,42 @@ int main()
    // extent['m'] = 96*4;
    // extent['n'] = 96;
    // extent['u'] = 96;
-   // extent['h'] = 64*8;
+   // extent['h'] = 64;
    // extent['k'] = 64;
-   // extent['x'] = 64*2;
+   // extent['x'] = 64;
    // extent['y'] = 64;
 
-   std::vector<int32_t> modesA{'a','b','c'};
-   std::vector<int32_t> modesB{'b', 'z'};
-   std::vector<int32_t> modesC{'c', 'z'};
-   std::vector<int32_t> modesD{'a', 'z'};
+   std::vector<int32_t> modesA{'l', 'j', 'm'};
+   std::vector<int32_t> modesB{'i', 'l', 'n'};
+   std::vector<int32_t> modesC{'n', 'm', 'k'};
+   std::vector<int32_t> modesD{'i', 'j', 'k'};
 
    std::unordered_map<int32_t, int64_t> extent;
-   size_t size = 1 << 10;
-   extent['a'] = size;
-   extent['b'] = size;
-   extent['c'] = size;
-   extent['z'] = size;
-   // extent['k'] = size;
-   // extent['k'] = size;
+   size_t size = 1 << 9;
+   extent['i'] = size;
+   extent['j'] = size;
+   extent['k'] = size;
+   extent['l'] = size;
+   extent['m'] = size;
+   extent['n'] = size;
 
    // Create a vector of extents for each tensor
    std::vector<int64_t> extentA;
-   for (auto mode : modesA)
+   for (auto mode : modesA) {
       extentA.push_back(extent[mode]);
+   }
    std::vector<int64_t> extentB;
-   for (auto mode : modesB)
+   for (auto mode : modesB) {
       extentB.push_back(extent[mode]);
+   }
    std::vector<int64_t> extentC;
-   for (auto mode : modesC)
+   for (auto mode : modesC) {
       extentC.push_back(extent[mode]);
+   }
    std::vector<int64_t> extentD;
-   for (auto mode : modesD)
+   for (auto mode : modesD) {
       extentD.push_back(extent[mode]);
+   }
 
    printf("Define network, modes, and extents\n");
 
@@ -177,7 +181,7 @@ int main()
    size_t sizeB = sizeof(floatType) * elementsB;
    size_t sizeC = sizeof(floatType) * elementsC;
    size_t sizeD = sizeof(floatType) * elementsD;
-   printf("Total memory: %.2f GB\n", (sizeA + sizeB + sizeC + sizeD));
+   printf("Total memory: %.2f GB\n", (sizeA + sizeB + sizeC + sizeD) * 1e-9);
 
    void* rawDataIn_d[numInputs];
    void* D_d;
@@ -358,7 +362,7 @@ int main()
                                          work,
                                          requiredWorkspaceSize) );
 
-   printf("Allocate workspace (requiredWorkspace = %f GB).\n", ((double) requiredWorkspaceSize) / 1e9);
+   printf("Allocate workspace (%f GB).\n", ((float) requiredWorkspaceSize) / 1e9);
 
    // Sphinx: #7
    /*******************************
@@ -459,9 +463,7 @@ int main()
 
    printf("numSlices: %ld\n", numSlices);
    printf("%.2f ms / slice\n", minTimeCUTENSOR * 1000.f / numSlices);
-   printf("Average: %.2f TFLOPS/s\n", flops/1e12/avTime);
-   printf("Best: %.2f TFLOPS/s\n", flops/1e12/minTimeCUTENSOR );
-   printf("%.2f TFLOPS\n", flops/1e12);
+   printf("%.2f TFLOPS/s   (%f s)\n", flops/1e12/avTime, avTime );
 
    HANDLE_ERROR( cutensornetDestroySliceGroup(sliceGroup) );
    HANDLE_ERROR( cutensornetDestroy(handle) );

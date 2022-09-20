@@ -169,7 +169,8 @@ int main(int argc, char** argv)
     #undef TENSOR
     #endif
 
-    const double total_bytes = 3. * 8. * 4096. * 8. * 4096. * kElementSize / 1024. / 1024. / 1024.;
+    // double total_bytes = 3. * 4. * 4096. * 4. * 4096. * kElementSize / 1024. / 1024. / 1024.;
+    double total_bytes = 3. * extent['i'] * extent['j'] * kElementSize / 1024. / 1024. / 1024.;
 
     printf("Total Memory: %f GB\n", total_bytes);
 
@@ -257,6 +258,9 @@ int main(int argc, char** argv)
     printf("done.\n");
 
     printf("Allocating data ... ");
+    size_t freeMem, totalMem;
+    CHECK( cudaMemGetInfo(&freeMem, &totalMem) );
+    printf("Free Memory: %zu; Total Memory: %zu\n", freeMem/1024/1024/1024, totalMem/1024/1024/1024);
 
     int64_t elementsA = product(discretize(extentA, multiply(deviceCountA, blocksizeA))) / product(deviceCountA);
     std::vector<void*> memoryA;

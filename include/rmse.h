@@ -32,3 +32,24 @@ T rmse(const size_t n, const T* dVec1, const T* dVec2)
 
   return std::sqrt(rmse/n);
 }
+
+template <typename T>
+T hostRMSE(const size_t n, const T* hostRef, const T* devVec)
+{
+  T* hostVec;
+  HANDLE_CUDA_ERROR(cudaMallocHost(&hostVec, n*sizeof(T)));
+  
+  HANDLE_CUDA_ERROR(cudaMemcpy(hostVec, devVec, n*sizeof(T), cudaMemcpyDeviceToHost));
+
+  T rmse = 0.;
+  for (size_t i = 0; i < n; ++i)
+  {
+    T diff = hostRef[i] - hostVec[i];
+    rmse += (diff*diff);
+    // printf("Ref: %f; Dev: %f\n", hostRef[i], hostVec[i]);
+  }
+
+  HANDLE_CUDA_ERROR(cudaFreeHost(hostVec));
+
+  return std::sqrt(rmse/n);
+}

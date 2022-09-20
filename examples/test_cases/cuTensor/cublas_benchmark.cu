@@ -46,8 +46,8 @@
 int main()
 {
     // --- Parameters ---
-    #define DOUBLE
-    const int runs = 3;
+    #define TENSOR
+    const int runs = 1;
     const int worksizePref = 3; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
     const bool printDebug = false;
     const bool allAlgos = false;
@@ -107,7 +107,7 @@ int main()
     #endif
 
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
-    floatTypeCompute beta  = (floatTypeCompute)0.f;
+    floatTypeCompute beta  = (floatTypeCompute)1.2f;
 
     if (printDebug) printf("Include headers and define data types\n");
 
@@ -136,8 +136,8 @@ int main()
     int nmodeC = modeC.size();
 
     std::unordered_map<int, int64_t> extent;
-    // const int size = 1 << 14;
-    const size_t size = 4096 * 8;
+    const int size = 1 << 14;
+    // const size_t size = 4096;
     const size_t i = size;
     const size_t j = size;
     const size_t k = size;
@@ -231,7 +231,7 @@ int main()
     printf("=== cuBLAS ===\n");
     floatTypeC *C_cublas;
     CUDA_CHECK(cudaMalloc((void**) &C_cublas, sizeC));
-    CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
+    if (checkRMSE) CUDA_CHECK(cudaMemcpy(C_cublas, C, sizeC, cudaMemcpyHostToDevice));
 
     cudaStream_t s;
     cublasHandle_t cublas_handle;

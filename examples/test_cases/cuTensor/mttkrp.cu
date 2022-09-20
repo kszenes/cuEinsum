@@ -42,8 +42,9 @@
 #include "rmse.h"
 #include <string>
 #include <iostream>
-#include <tuple>
-#include <omp.h>
+
+
+
 
 int findCommonIndices(std::string&, std::string&);
 
@@ -55,7 +56,7 @@ int main()
     CUDA_CHECK(cudaSetDevice(1));
 
     #define DOUBLE
-    const int runs = 20;
+    const int runs = 5;
     const int worksizePref = 4; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
     const bool printDebug = false;
     const bool allAlgos = false;
@@ -63,11 +64,11 @@ int main()
     const bool checkRMSE = false;
 
     // Einsum: A_string, B_string -> C_string
-    std::string A_string = "i";
-    std::string B_string = "j";
-    std::string C_string = "ij";
-    // const size_t base = 1 << 10;
-    const size_t size = 1 << 15;
+    std::string A_string = "ajk";
+    std::string B_string = "ijk";
+    std::string C_string = "ia";
+    // const size_t base = 1 << 14;
+    const size_t size = 1 << 10;
     // const size_t size = (1 << 7) + 60;
     const size_t contracted = size;
     const size_t notContracted = size;
@@ -130,29 +131,8 @@ int main()
     if (printDebug) printf("Include headers and define data types\n");
 
     /**********************
-     * Computing: C_{m,u,n,v} = alpha * A_{m,h,k,n} B_{u,k,v,h} + beta * C_{m,u,n,v}
+     * Contraction
      **********************/
-
-    // std::vector<int> modeC{'m','u','n','v'};
-    // std::vector<int> modeA{'m','h','k','n'};
-    // std::vector<int> modeB{'u','k','v','h'};
-    // int nmodeA = modeA.size();
-    // int nmodeB = modeB.size();
-    // int nmodeC = modeC.size();
-
-    // std::unordered_map<int, int64_t> extent;
-    // extent['m'] = 96;
-    // extent['n'] = 96;
-    // extent['u'] = 96;
-    // extent['v'] = 64;
-    // extent['h'] = 64;
-    // extent['k'] = 64;
-
-    // double tflops = (2.0 * extent['m'] * extent['n'] * extent['u'] * extent['v'] * extent['h'] * extent['k']) /1e12;
-
-    /**************
-      MATMUL
-    **************/
 
     std::cout << "Contraction:\t\t" << A_string << ',' << B_string << "->" << C_string << '\n';
 
@@ -189,13 +169,6 @@ int main()
     for (char c : C_string) {
         extent[c] = notContracted;
     }
-    // const int n = size;
-    // const int o = size;
-    // const int p = size;
-
-    // extent['n'] = n;
-    // extent['o'] = o;
-    // extent['p'] = p;
 
     // computes FLOPS
     double tflops = 2.0;

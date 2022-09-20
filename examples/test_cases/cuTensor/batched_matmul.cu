@@ -50,11 +50,14 @@ int main()
     // --- Parameters ---
     #define TENSOR
     const int runs = 1;
-    const bool checkRMSE = true;
-    const int worksizePref = 2; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX
+    const bool checkRMSE = false;
+    const int worksizePref = 4; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX; 4: ALL
     const bool printDebug = false;
     const bool cublasFlag = true;
     const bool allAlgos = false;
+    std::vector<int> modeA{'j', 'k', 'i'};
+    std::vector<int> modeB{'k', 'l', 'i'};
+    std::vector<int> modeC{'j', 'l', 'i'};
 
     printf("Workspace preference: ");
     switch (worksizePref) {
@@ -62,6 +65,7 @@ int main()
         case 1: printf("MIN\n"); break;
         case 2: printf("RECOMMENDED\n"); break;
         case 3: printf("MAX\n"); break;
+        case 4: printf("ALL\n"); break;
         default: printf("Unsupported worksizePref: %d", worksizePref); exit(-1);
     }
 
@@ -109,16 +113,13 @@ int main()
 
 
     floatTypeCompute alpha = (floatTypeCompute)1.7f;
-    floatTypeCompute beta  = (floatTypeCompute)0.f;
+    floatTypeCompute beta  = (floatTypeCompute)1.f;
 
     if (printDebug) printf("Include headers and define data types\n");
 
     /**************
       MATMUL
     **************/
-    std::vector<int> modeA{'j', 'k', 'i'};
-    std::vector<int> modeB{'k', 'l', 'i'};
-    std::vector<int> modeC{'j', 'l', 'i'};
     int nmodeA = modeA.size();
     int nmodeB = modeB.size();
     int nmodeC = modeC.size();
@@ -372,13 +373,18 @@ int main()
 
     uint64_t worksize = 0;
     if (worksizePref) {
-        CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
-                    &desc,
-                    &find,
-                    (cutensorWorksizePreference_t) worksizePref, &worksize));
+        if (worksizePref == 4) {
+            CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
+                        &desc,
+                        &find,
+                        (cutensorWorksizePreference_t) CUTENSOR_WORKSPACE_MAX, &worksize));
+        } else {
+            CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
+                        &desc,
+                        &find,
+                        (cutensorWorksizePreference_t) worksizePref, &worksize));
+        }
     }
-    // worksize = 0;
-
     void *work = nullptr;
     if (worksize > 0)
     {
@@ -412,69 +418,211 @@ int main()
      * Run
      **********************/
 
+    // cutensorStatus_t err;
+    // const int algoToTry = allAlgos ? 6 : -5; // only try default patient
+    // for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < algoToTry; algo++) {
+    //     double minTimeCUTENSOR = 1e100;
+    //     double avTime = 0;
+    //     for (int iter=0; iter < runs; iter++)
+    //     {
+    //         CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
+    //         CUDA_CHECK(cudaDeviceSynchronize());
+
+    //         cutensorContractionFind_t find;
+    //         err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
+
+    //         if (err == CUTENSOR_STATUS_SUCCESS) {
+    //             cutensorContractionPlan_t plan;
+    //             err = cutensorInitContractionPlan(&handle,
+    //                                               &plan,
+    //                                               &desc,
+    //                                               &find,
+    //                                               worksize);
+    //             // Set up timing
+    //             if (err == CUTENSOR_STATUS_SUCCESS) {
+    //                 GPUTimer timer;
+    //                 err = cutensorContraction(&handle,
+    //                                         &plan,
+    //                                         (void*) &alpha, A_d, B_d,
+    //                                         (void*) &beta,  C_d, C_d, 
+    //                                         work, worksize, 0 /* stream */);
+    //                 timer.start();
+
+    //                 err = cutensorContraction(&handle,
+    //                                         &plan,
+    //                                         (void*) &alpha, A_d, B_d,
+    //                                         (void*) &beta,  C_d, C_d, 
+    //                                         work, worksize, 0 /* stream */);
+
+    //                 // Synchronize and measure timing
+    //                 auto time = timer.seconds();
+
+    //                 if (err != CUTENSOR_STATUS_SUCCESS)
+    //                 {
+    //                     printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+    //                 }
+    //                 avTime += time / runs;
+    //                 minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
+    //             }
+    //         }
+    //     }
+    //     if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
+    //     {
+    //         if (checkRMSE && cublasFlag) {
+    //             floatTypeA rmse_diff = rmse(i*j*l, C_d, C_cublas);
+    //             printf("RMSE = %f\t", rmse_diff);
+
+    //         } 
+    //         printf("cuTensor: %d algo %.2f GB/s %.2f TFLOP/s\n", algo, transferedBytes / minTimeCUTENSOR, tflops / avTime);
+    //     }
+
+    //     if (bestTime > minTimeCUTENSOR)
+    //     {
+    //         bestTime = minTimeCUTENSOR;
+    //         bestAlgo = algo;
+    //     }
+    // }
     cutensorStatus_t err;
     const int algoToTry = allAlgos ? 6 : -5; // only try default patient
     for (int algo = (int) CUTENSOR_ALGO_DEFAULT_PATIENT; algo < algoToTry; algo++) {
-        double minTimeCUTENSOR = 1e100;
-        double avTime = 0;
-        for (int iter=0; iter < runs; iter++)
-        {
-            CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
-            CUDA_CHECK(cudaDeviceSynchronize());
+        printf("Algo: %d\n", algo);
+        if (worksizePref == 4) {
+            for (int worksize_iter = 1; worksize_iter <= (int) CUTENSOR_WORKSPACE_MAX; worksize_iter++) {
+                double minTimeCUTENSOR = 1e100;
+                double avTime = 0;
+                CUDA_CHECK(cutensorContractionGetWorkspaceSize(&handle,
+                            &desc,
+                            &find,
+                            (cutensorWorksizePreference_t) worksize_iter, &worksize));
+                for (int iter=0; iter < runs; iter++)
+                {
+                    CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
+                    CUDA_CHECK(cudaDeviceSynchronize());
 
-            cutensorContractionFind_t find;
-            err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
+                    cutensorContractionFind_t find;
+                    err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
 
-            if (err == CUTENSOR_STATUS_SUCCESS) {
-                cutensorContractionPlan_t plan;
-                err = cutensorInitContractionPlan(&handle,
-                                                  &plan,
-                                                  &desc,
-                                                  &find,
-                                                  worksize);
-                // Set up timing
-                if (err == CUTENSOR_STATUS_SUCCESS) {
-                    GPUTimer timer;
-                    err = cutensorContraction(&handle,
-                                            &plan,
-                                            (void*) &alpha, A_d, B_d,
-                                            (void*) &beta,  C_d, C_d, 
-                                            work, worksize, 0 /* stream */);
-                    timer.start();
+                    if (err == CUTENSOR_STATUS_SUCCESS) {
+                        cutensorContractionPlan_t plan;
+                        err = cutensorInitContractionPlan(&handle,
+                                                        &plan,
+                                                        &desc,
+                                                        &find,
+                                                        worksize);
+                        // Set up timing
+                        if (err == CUTENSOR_STATUS_SUCCESS) {
+                            // Set up timing
+                            GPUTimer timer;
+                            err = cutensorContraction(&handle,
+                                                    &plan,
+                                                    (void*) &alpha, A_d, B_d,
+                                                    (void*) &beta,  C_d, C_d, 
+                                                    work, worksize, 0 /* stream */);
+                            timer.start();
 
-                    err = cutensorContraction(&handle,
-                                            &plan,
-                                            (void*) &alpha, A_d, B_d,
-                                            (void*) &beta,  C_d, C_d, 
-                                            work, worksize, 0 /* stream */);
+                            err = cutensorContraction(&handle,
+                                                    &plan,
+                                                    (void*) &alpha, A_d, B_d,
+                                                    (void*) &beta,  C_d, C_d, 
+                                                    work, worksize, 0 /* stream */);
 
-                    // Synchronize and measure timing
-                    auto time = timer.seconds();
+                            // Synchronize and measure timing
+                            auto time = timer.seconds();
 
-                    if (err != CUTENSOR_STATUS_SUCCESS)
-                    {
-                        printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+                            if (err != CUTENSOR_STATUS_SUCCESS)
+                            {
+                                printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+                            }
+                            avTime += time / runs;
+                            minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
+                        }
                     }
-                    avTime += time / runs;
-                    minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
+                }
+                if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
+                {
+                    if (checkRMSE && cublasFlag) {
+                        floatTypeA rmse_diff = rmse(i*j*l, C_d, C_cublas);
+                        printf("RMSE = %f\t", rmse_diff);
+
+                    } 
+
+                    printf("  Worksize: %zu MB\t\t%.2f GB/s %.2f TFLOP/s\n", worksize/1024/1024, transferedBytes / avTime, tflops / avTime);
+                }
+
+                if (bestTime > minTimeCUTENSOR)
+                {
+                    bestTime = minTimeCUTENSOR;
+                    bestAlgo = algo;
+                }
+
+
+            }
+        } else {
+            double minTimeCUTENSOR = 1e100;
+            double avTime = 0;
+            for (int iter=0; iter < runs; iter++)
+            {
+                CUDA_CHECK(cudaMemcpy(C_d, C, sizeC, cudaMemcpyHostToDevice));
+                CUDA_CHECK(cudaDeviceSynchronize());
+
+                cutensorContractionFind_t find;
+                err = cutensorInitContractionFind(&handle, &find, (cutensorAlgo_t) algo);
+
+                if (err == CUTENSOR_STATUS_SUCCESS) {
+                    cutensorContractionPlan_t plan;
+                    err = cutensorInitContractionPlan(&handle,
+                                                    &plan,
+                                                    &desc,
+                                                    &find,
+                                                    worksize);
+                    // Set up timing
+                    if (err == CUTENSOR_STATUS_SUCCESS) {
+                        // Set up timing
+                        GPUTimer timer;
+                        err = cutensorContraction(&handle,
+                                                &plan,
+                                                (void*) &alpha, A_d, B_d,
+                                                (void*) &beta,  C_d, C_d, 
+                                                work, worksize, 0 /* stream */);
+                        timer.start();
+
+                        err = cutensorContraction(&handle,
+                                                &plan,
+                                                (void*) &alpha, A_d, B_d,
+                                                (void*) &beta,  C_d, C_d, 
+                                                work, worksize, 0 /* stream */);
+
+                        // Synchronize and measure timing
+                        auto time = timer.seconds();
+
+                        if (err != CUTENSOR_STATUS_SUCCESS)
+                        {
+                            printf("ERROR: %s in line %d\n", cutensorGetErrorString(err), __LINE__);
+                        }
+                        avTime += time / runs;
+                        minTimeCUTENSOR = (minTimeCUTENSOR < time) ? minTimeCUTENSOR : time;
+                    }
                 }
             }
-        }
-        if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
-        {
-            if (checkRMSE && cublasFlag) {
-                floatTypeA rmse_diff = rmse(i*j*l, C_d, C_cublas);
-                printf("RMSE = %f\t", rmse_diff);
+            if (err != CUTENSOR_STATUS_NOT_SUPPORTED)
+            {
+                if (checkRMSE && cublasFlag) {
+                    floatTypeA rmse_diff = rmse(i*j*l, C_d, C_cublas);
+                    printf("RMSE = %f\t", rmse_diff);
 
-            } 
-            printf("cuTensor: %d algo %.2f GB/s %.2f TFLOP/s\n", algo, transferedBytes / minTimeCUTENSOR, tflops / avTime);
+                } 
+
+                printf("cuTensor: %d algo %.2f GB/s %.2f TFLOP/s\n", algo, transferedBytes / avTime, tflops / avTime);
+            }
+
+            if (bestTime > minTimeCUTENSOR)
+            {
+                bestTime = minTimeCUTENSOR;
+                bestAlgo = algo;
+            }
+
         }
 
-        if (bestTime > minTimeCUTENSOR)
-        {
-            bestTime = minTimeCUTENSOR;
-            bestAlgo = algo;
-        }
     }
 
     // floatTypeA rmse_true = rmse_host(i, j*k, l, alpha, A, B, C_cublas);
@@ -510,7 +658,7 @@ int main()
     if (work) cudaFree(work);
 
     if (C_cublas) CUDA_CHECK(cudaFree(C_cublas));
-    if (cublas_handle) CUDA_CHECK(cublasDestroy(cublas_handle));
+    // if (cublas_handle) CUDA_CHECK(cublasDestroy(cublas_handle));
 
     return 0;
 }
