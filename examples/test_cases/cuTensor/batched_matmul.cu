@@ -48,9 +48,9 @@ T rmse_host(const int, const int, const int, const T, const T*, const T*, const 
 int main()
 {
     // --- Parameters ---
-    #define TENSOR
-    const int runs = 1;
-    const bool checkRMSE = false;
+    #define DOUBLE
+    const int runs = 3;
+    const bool checkRMSE = true;
     const int worksizePref = 4; // 0: 0[Mib]; 1: MIN; 2: RECOMMENDED; 3: MAX; 4: ALL
     const bool printDebug = false;
     const bool cublasFlag = true;
@@ -112,8 +112,8 @@ int main()
     #endif
 
 
-    floatTypeCompute alpha = (floatTypeCompute)1.7f;
-    floatTypeCompute beta  = (floatTypeCompute)1.f;
+    floatTypeCompute alpha = (floatTypeCompute)1.0f;
+    floatTypeCompute beta  = (floatTypeCompute)0.0f;
 
     if (printDebug) printf("Include headers and define data types\n");
 
@@ -126,7 +126,7 @@ int main()
 
     std::unordered_map<int, int64_t> extent;
     const int size = 1 << 12;
-    const int i = 10;
+    const int i = 4;
     const int j = size;
     const int k = size;
     const int l = size;
@@ -183,6 +183,8 @@ int main()
     double transferedBytes = sizeC + sizeA + sizeB;
     transferedBytes += ((float) beta != 0.f) ? sizeC : 0;
     transferedBytes /= 1e9;
+    double arithmetic_intensity = tflops * 1e3 / transferedBytes;
+    printf("Arithmetic Intensity:\t%.2f FLOP/Byte\n", arithmetic_intensity);
 
     floatTypeA *A_d, *B_d, *C_d;
     CUDA_CHECK(cudaMalloc((void**) &A_d, sizeA));
